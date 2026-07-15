@@ -37,6 +37,30 @@ Screenshots are saved to `~/Pictures/Screenshots` as timestamped PNGs
 paste. Both hotkeys are remembered in `~/.config/screen-capture/config.json`
 between runs.
 
+## Autostart (KDE Plasma / XDG autostart)
+
+```bash
+mkdir -p ~/.local/bin ~/.config/autostart
+ln -s "$(pwd)/scripts/launch.sh" ~/.local/bin/screen-capture-launch.sh
+cat > ~/.config/autostart/screen-capture.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Screen Capture
+Comment=Tray app for hotkey and area screenshots
+Exec=/home/rolo/.local/bin/screen-capture-launch.sh
+Terminal=false
+Icon=camera-photo
+X-GNOME-Autostart-enabled=true
+EOF
+```
+
+`Exec=` must be a space-free path. KDE Plasma 6 converts autostart
+`.desktop` entries into systemd user services, and its handling of a
+directly-quoted, space-containing `Exec=` (e.g. pointing straight at
+`.venv/bin/python` inside this "screen capture" folder) silently fell back
+to the system Python — which lacks `PySide6` — instead of the venv's. A
+symlink at a space-free path to `scripts/launch.sh` sidesteps that.
+
 ## Notes
 
 - Requires an X11 session (global key listening and the tray icon both
