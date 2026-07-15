@@ -37,29 +37,26 @@ Screenshots are saved to `~/Pictures/Screenshots` as timestamped PNGs
 paste. Both hotkeys are remembered in `~/.config/screen-capture/config.json`
 between runs.
 
-## Autostart (KDE Plasma / XDG autostart)
+## Autostart
 
 ```bash
-mkdir -p ~/.local/bin ~/.config/autostart
+mkdir -p ~/.local/bin
 ln -s "$(pwd)/scripts/launch.sh" ~/.local/bin/screen-capture-launch.sh
-cat > ~/.config/autostart/screen-capture.desktop <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=Screen Capture
-Comment=Tray app for hotkey and area screenshots
-Exec=/home/rolo/.local/bin/screen-capture-launch.sh
-Terminal=false
-Icon=camera-photo
-X-GNOME-Autostart-enabled=true
-EOF
+echo '/home/rolo/.local/bin/screen-capture-launch.sh &' >> ~/.xprofile
 ```
 
-`Exec=` must be a space-free path. KDE Plasma 6 converts autostart
-`.desktop` entries into systemd user services, and its handling of a
-directly-quoted, space-containing `Exec=` (e.g. pointing straight at
-`.venv/bin/python` inside this "screen capture" folder) silently fell back
-to the system Python — which lacks `PySide6` — instead of the venv's. A
-symlink at a space-free path to `scripts/launch.sh` sidesteps that.
+This runs the launcher from `~/.xprofile`, which SDDM sources directly at
+X11 session startup — a plain shell script, not KDE's XDG autostart path.
+
+We tried XDG autostart (`~/.config/autostart/*.desktop`) first, but KDE
+Plasma 6 converts those entries into systemd user services, and it
+mishandled the space in `.venv/bin/python` inside this "screen capture"
+folder — even after routing through a space-free symlink to sidestep
+`Exec=` quoting, it *still* failed after a real reboot in a way we couldn't
+diagnose further (no access to the systemd user session's logs from this
+environment). `.xprofile` avoids that conversion layer entirely, so if you
+ever want to go back to a `.desktop`-based entry instead, that's the known
+open question to resolve first.
 
 ## Notes
 
