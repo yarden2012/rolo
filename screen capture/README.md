@@ -42,21 +42,28 @@ between runs.
 ```bash
 mkdir -p ~/.local/bin
 ln -s "$(pwd)/scripts/launch.sh" ~/.local/bin/screen-capture-launch.sh
-echo '/home/rolo/.local/bin/screen-capture-launch.sh &' >> ~/.xprofile
 ```
 
-This runs the launcher from `~/.xprofile`, which SDDM sources directly at
-X11 session startup — a plain shell script, not KDE's XDG autostart path.
+Then register `~/.local/bin/screen-capture-launch.sh` to run at login —
+either via KDE's **System Settings → Startup and Shutdown → Autostart →
+Add New → Add Login Script**, or by dropping a `.desktop` file in
+`~/.config/autostart/` with `Exec=/home/rolo/.local/bin/screen-capture-launch.sh`.
 
-We tried XDG autostart (`~/.config/autostart/*.desktop`) first, but KDE
-Plasma 6 converts those entries into systemd user services, and it
-mishandled the space in `.venv/bin/python` inside this "screen capture"
-folder — even after routing through a space-free symlink to sidestep
-`Exec=` quoting, it *still* failed after a real reboot in a way we couldn't
-diagnose further (no access to the systemd user session's logs from this
-environment). `.xprofile` avoids that conversion layer entirely, so if you
-ever want to go back to a `.desktop`-based entry instead, that's the known
-open question to resolve first.
+`scripts/launch.sh` sets `PYTHONPATH` to the venv's `site-packages` and
+calls the system `python3` directly, rather than invoking
+`.venv/bin/python` (a symlink chain ending at `/usr/bin/python3`). That
+symlink invocation works fine interactively, but under KDE Plasma 6's
+systemd-based autostart it silently failed Python's venv auto-detection
+(no `pyvenv.cfg` found relative to the resolved executable), falling back
+to system site-packages and raising `ModuleNotFoundError: No module named
+'PySide6'`. Setting `PYTHONPATH` explicitly sidesteps that detection
+entirely, so it's independent of whatever launched it.
+
+An earlier theory blamed a space in the `.venv` path itself (fixed via a
+space-free symlink) — that turned out to be a red herring: the failure
+persisted even through a space-free path once we could compare against a
+GUI-registered Login Script entry, pointing at the venv-detection issue
+above instead.
 
 ## Notes
 
