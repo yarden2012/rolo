@@ -1,0 +1,9 @@
+[Unit]
+Description=open_key global hotkey launcher
+
+[Service]
+ExecStart=%h/rolo/open_key/open_key.sh listen
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

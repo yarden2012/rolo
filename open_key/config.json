@@ -1,0 +1,5 @@
+{
+  "<ctrl>+<f6>": [
+    "/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=dawn-launcher gg.dawn.Launcher"
+  ]
+}

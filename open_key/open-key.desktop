@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Open Key
+Comment=Bind keyboard shortcuts to launch apps
+Exec=/home/rolo/rolo/open_key/open_key_gui.sh
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;
