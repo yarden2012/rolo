@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rolo Video Editor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">🎬 Rolo Video Editor</div>
+  <div class="topbar-actions">
+    <label class="btn btn-primary" for="upload-input">＋ Add Video</label>
+    <input id="upload-input" type="file" accept="video/*" multiple hidden>
+    <button id="export-btn" class="btn btn-accent">Export Video</button>
+  </div>
+</header>
+
+<div id="export-overlay" class="export-overlay hidden">
+  <div class="export-card">
+    <h3>Exporting video…</h3>
+    <div class="progress-track"><div id="export-progress-bar" class="progress-fill"></div></div>
+    <div id="export-progress-label">0:00 / 0:00</div>
+    <button id="cancel-export-btn" class="btn btn-ghost">Cancel</button>
+  </div>
+</div>
+
+<main class="workspace">
+
+  <aside class="panel panel-left">
+    <h2>Clip Properties</h2>
+    <div id="no-selection-msg" class="muted">Select a clip on the timeline to edit its properties.</div>
+    <div id="clip-props" class="hidden">
+      <div class="prop-row">
+        <label>Name</label>
+        <div id="clip-name" class="value-text"></div>
+      </div>
+      <div class="prop-row">
+        <label>Duration</label>
+        <div id="clip-duration" class="value-text"></div>
+      </div>
+      <div class="prop-row">
+        <label for="clip-volume">Volume</label>
+        <input id="clip-volume" type="range" min="0" max="1" step="0.01" value="1">
+      </div>
+      <div class="prop-row prop-row-inline">
+        <label for="clip-muted">Muted</label>
+        <input id="clip-muted" type="checkbox">
+      </div>
+      <div class="prop-row">
+        <label for="clip-speed">Speed</label>
+        <select id="clip-speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+      <div class="prop-actions">
+        <button id="split-btn" class="btn btn-small">✂ Split at Playhead</button>
+        <button id="duplicate-btn" class="btn btn-small">⧉ Duplicate</button>
+        <button id="delete-btn" class="btn btn-small btn-danger">🗑 Delete</button>
+      </div>
+    </div>
+  </aside>
+
+  <section class="stage-area">
+    <div id="drop-zone" class="preview-wrap">
+      <canvas id="preview-canvas" width="1280" height="720"></canvas>
+      <video id="stage-video" playsinline></video>
+      <div id="empty-state" class="empty-state">
+        <p>Drag &amp; drop video files here</p>
+        <p class="muted">or</p>
+        <label class="btn btn-primary" for="upload-input">＋ Add Video</label>
+        <p class="muted small">Supports MP4, WebM, MOV, OGG (playback depends on your browser's codec support)</p>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button id="play-pause-btn" class="btn btn-round" title="Play / Pause (Space)">▶</button>
+      <button id="stop-btn" class="btn btn-round" title="Stop">■</button>
+      <span id="current-time" class="time-label">0:00.0</span>
+      <span class="time-sep">/</span>
+      <span id="total-time" class="time-label">0:00.0</span>
+      <div class="spacer"></div>
+      <label for="zoom-range" class="muted small">Zoom</label>
+      <input id="zoom-range" type="range" min="20" max="300" value="80">
+    </div>
+
+    <div class="timeline-panel">
+      <div id="timeline-ruler" class="timeline-ruler"></div>
+      <div id="timeline-scroll" class="timeline-scroll">
+        <div id="timeline-track" class="timeline-track">
+          <div id="timeline-playhead" class="timeline-playhead"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel panel-right">
+    <h2>Text Overlays</h2>
+    <form id="overlay-form" class="overlay-form">
+      <input id="overlay-text" type="text" placeholder="Overlay text" required>
+      <div class="prop-row-inline two-col">
+        <div>
+          <label for="overlay-start">Start (s)</label>
+          <input id="overlay-start" type="number" step="0.1" min="0" value="0">
+        </div>
+        <div>
+          <label for="overlay-end">End (s)</label>
+          <input id="overlay-end" type="number" step="0.1" min="0" value="3">
+        </div>
+      </div>
+      <div class="prop-row-inline two-col">
+        <div>
+          <label for="overlay-x">X %</label>
+          <input id="overlay-x" type="number" min="0" max="100" value="50">
+        </div>
+        <div>
+          <label for="overlay-y">Y %</label>
+          <input id="overlay-y" type="number" min="0" max="100" value="85">
+        </div>
+      </div>
+      <div class="prop-row-inline two-col">
+        <div>
+          <label for="overlay-size">Size</label>
+          <input id="overlay-size" type="number" min="8" max="200" value="36">
+        </div>
+        <div>
+          <label for="overlay-color">Color</label>
+          <input id="overlay-color" type="color" value="#ffffff">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-small">＋ Add Overlay</button>
+    </form>
+    <ul id="overlay-list" class="overlay-list"></ul>
+  </aside>
+
+</main>
+
+<script src="js/utils.js"></script>
+<script src="js/state.js"></script>
+<script src="js/clips.js"></script>
+<script src="js/overlays.js"></script>
+<script src="js/player.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/exporter.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
