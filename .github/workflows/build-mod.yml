@@ -1,0 +1,51 @@
+name: Build Mode Switcher
+
+on:
+  push:
+    branches:
+      - claude/minecraft-fabric-mod-toggle-6q34fk
+    paths:
+      - 'mc-mods/**'
+      - '.github/workflows/build-mod.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build mod
+        working-directory: mc-mods/mode-switcher
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon build
+
+      - name: Upload jar as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mode-switcher
+          path: mc-mods/mode-switcher/build/libs/*.jar
+
+      - name: Commit jar to dist folder
+        run: |
+          mkdir -p mc-mods/mode-switcher/dist
+          for f in mc-mods/mode-switcher/build/libs/*.jar; do
+            case "$f" in
+              *-sources.jar) ;;
+              *) cp "$f" mc-mods/mode-switcher/dist/ ;;
+            esac
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mc-mods/mode-switcher/dist
+          git diff --cached --quiet || git commit -m "Add built mod jar [skip ci]"
+          git push
