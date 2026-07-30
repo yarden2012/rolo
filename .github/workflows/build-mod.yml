@@ -3,9 +3,10 @@ name: Build Mode Switcher
 on:
   push:
     branches:
-      - claude/minecraft-fabric-mod-toggle-6q34fk
+      - main
     paths:
       - 'mc-mods/**'
+      - '!mc-mods/mode-switcher/dist/**'
       - '.github/workflows/build-mod.yml'
   workflow_dispatch:
 
