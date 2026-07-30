@@ -1,0 +1,32 @@
+{
+	"key.modeswitcher.toggle": "Switch Vanilla/PvP Mode",
+	"key.modeswitcher.menu": "Open Mode Switcher Config",
+	"key.categories.modeswitcher.main": "Mode Switcher",
+
+	"modeswitcher.mode.vanilla": "Vanilla",
+	"modeswitcher.mode.pvp": "PvP",
+
+	"modeswitcher.screen.title": "Mode Switcher",
+	"modeswitcher.screen.current": "Current mode: %s",
+	"modeswitcher.screen.hint": "Tick the settings to switch, adjust them in Options, then save them into a profile.",
+	"modeswitcher.screen.values": "V: %s  P: %s",
+	"modeswitcher.screen.on": "ON",
+	"modeswitcher.screen.off": "OFF",
+	"modeswitcher.screen.capture_vanilla": "Save current as Vanilla",
+	"modeswitcher.screen.capture_pvp": "Save current as PvP",
+
+	"modeswitcher.setting.fov": "FOV",
+	"modeswitcher.setting.sensitivity": "Mouse Sensitivity",
+	"modeswitcher.setting.gamma": "Brightness",
+	"modeswitcher.setting.render_distance": "Render Distance",
+	"modeswitcher.setting.max_fps": "Max Framerate",
+	"modeswitcher.setting.auto_jump": "Auto-Jump",
+	"modeswitcher.setting.view_bobbing": "View Bobbing",
+	"modeswitcher.setting.fov_effects": "FOV Effects",
+	"modeswitcher.setting.distortion_effects": "Distortion Effects",
+	"modeswitcher.setting.particles": "Particles",
+	"modeswitcher.setting.clouds": "Clouds",
+
+	"modeswitcher.message.switched": "Switched to %s mode (%s settings applied)",
+	"modeswitcher.message.no_profile": "No %s profile saved yet - open the Mode Switcher config and save one"
+}
