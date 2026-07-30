@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "modeswitcher",
+	"version": "${version}",
+	"name": "Mode Switcher",
+	"description": "Press one key to switch your client settings between a Vanilla profile and a PvP profile. Pick which settings get switched in the Mod Menu config screen.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.modeswitcher.ModeSwitcherClient"
+		],
+		"modmenu": [
+			"io.github.yarden2012.modeswitcher.modmenu.ModMenuIntegration"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.17.0",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
+	}
+}
