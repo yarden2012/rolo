@@ -184,13 +184,28 @@ input[type="color"] {
   display: flex;
   flex-direction: column;
   background: var(--bg-1);
+  /* Keeps the wide timeline content from stretching the page: the track
+     scrolls inside .timeline-scroll and the ruler is clipped below. */
+  min-width: 0;
+  overflow: hidden;
 }
+/* Fixed-width viewport onto the ruler. Its inner strip is as wide as the
+   whole timeline and is translated to follow the track's scroll position,
+   so tick labels stay aligned with the clips beneath them. */
 .timeline-ruler {
   height: 20px;
   position: relative;
+  width: 100%;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
   flex-shrink: 0;
+}
+.timeline-ruler-inner {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  will-change: transform;
 }
 .tick {
   position: absolute;

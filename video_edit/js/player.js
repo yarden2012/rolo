@@ -184,11 +184,15 @@ VE.player = (() => {
     const item = findItemAt(target);
     if (!item) {
       drawFrame(0);
+      frameCallbacks.forEach((cb) => cb(0));
       return;
     }
     const localTime = item.clip.inPoint + (target - item.start) * item.clip.speed;
     await loadClipForItem(item, localTime);
     drawFrame(target);
+    // Notify listeners so time readouts and the playhead marker follow any
+    // seek, not just frames produced during playback.
+    frameCallbacks.forEach((cb) => cb(target));
   }
 
   async function play() {

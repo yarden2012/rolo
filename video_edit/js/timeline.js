@@ -7,6 +7,7 @@ VE.timeline = (() => {
 
   const trackEl = document.getElementById('timeline-track');
   const rulerEl = document.getElementById('timeline-ruler');
+  const rulerInnerEl = document.getElementById('timeline-ruler-inner');
   const scrollEl = document.getElementById('timeline-scroll');
   const playheadEl = document.getElementById('timeline-playhead');
   const currentTimeEl = document.getElementById('current-time');
@@ -121,8 +122,10 @@ VE.timeline = (() => {
   }
 
   function renderRuler(totalDuration, px, widthPx) {
-    rulerEl.innerHTML = '';
-    rulerEl.style.width = widthPx + 'px';
+    rulerInnerEl.innerHTML = '';
+    // Only the inner strip gets the full timeline width; the ruler itself
+    // stays at 100% so it can never widen the page.
+    rulerInnerEl.style.width = widthPx + 'px';
     const step = px < 40 ? 10 : px < 90 ? 5 : px < 160 ? 2 : 1;
     const maxT = Math.max(totalDuration, scrollEl.clientWidth / px);
     for (let t = 0; t <= maxT; t += step) {
@@ -130,8 +133,14 @@ VE.timeline = (() => {
       tick.className = 'tick';
       tick.style.left = (t * px) + 'px';
       tick.textContent = formatTime(t);
-      rulerEl.appendChild(tick);
+      rulerInnerEl.appendChild(tick);
     }
+    syncRulerScroll();
+  }
+
+  // Keeps the ruler's ticks lined up with the clips as the timeline scrolls.
+  function syncRulerScroll() {
+    rulerInnerEl.style.transform = `translateX(${-scrollEl.scrollLeft}px)`;
   }
 
   function rulerClickHandler(e) {
@@ -241,6 +250,7 @@ VE.timeline = (() => {
   }
 
   rulerEl.addEventListener('click', rulerClickHandler);
+  scrollEl.addEventListener('scroll', syncRulerScroll);
 
   // --- Seeking by dragging on the empty scroll area -------------------------
   scrollEl.addEventListener('mousedown', (e) => {
