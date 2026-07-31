@@ -65,11 +65,20 @@ VE.exporter = (() => {
 
     const finished = new Promise((resolve) => {
       recorder.onstop = () => {
-        if (!cancelled && chunks.length > 0) {
-          const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
-          downloadBlob(blob);
+        const bytes = chunks.reduce((total, chunk) => total + chunk.size, 0);
+        if (cancelled) {
+          resolve();
+        } else if (bytes > 0) {
+          downloadBlob(new Blob(chunks, { type: mimeType || 'video/webm' }));
+          resolve();
+        } else {
+          // The recorder yielded no media (it can fail to capture frames if
+          // the tab was backgrounded or the machine stalled). Say so rather
+          // than ending with no file and no explanation.
+          alert('Export failed: no video data was captured. Keep this tab in the '
+            + 'foreground during export and try again.');
+          resolve();
         }
-        resolve();
       };
     });
 

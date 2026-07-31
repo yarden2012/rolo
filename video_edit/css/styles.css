@@ -110,6 +110,14 @@ input[type="color"] {
 .prop-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .prop-actions .btn { justify-content: center; }
 
+.section-heading {
+  margin-top: 22px !important;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.val-badge { color: var(--text); font-variant-numeric: tabular-nums; float: right; }
+#reset-effects-btn { width: 100%; justify-content: center; margin-top: 4px; }
+
 .stage-area {
   display: flex;
   flex-direction: column;
@@ -220,10 +228,28 @@ input[type="color"] {
   border-radius: 6px;
   overflow: hidden;
   border: 2px solid var(--border);
-  background: var(--bg-3) center / cover no-repeat;
+  background: var(--bg-3);
   flex-shrink: 0;
   cursor: grab;
   margin-right: 2px;
+}
+
+/* Row of captured frames tiled across the clip, each rendered near its
+   native size so the timeline stays sharp at any zoom level. */
+.clip-filmstrip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  pointer-events: none;
+}
+.clip-frame {
+  height: 100%;
+  flex: 0 0 auto;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-right: 1px solid rgba(0, 0, 0, 0.35);
 }
 .clip-block.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .clip-block.dragging { opacity: 0.6; cursor: grabbing; }

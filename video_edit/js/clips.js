@@ -17,30 +17,95 @@ VE.clips = (() => {
       volume: 1,
       muted: false,
       speed: 1,
+      // Visual effects, applied identically in the preview and the export.
+      brightness: 1,
+      contrast: 1,
+      saturation: 1,
+      filterPreset: 'none',
+      fadeIn: 0,
+      fadeOut: 0,
       thumb: null,
+      thumbs: [],   // [{ time, src }] filmstrip frames, in source-time order
       ready: false,
     };
   }
 
-  function captureThumbnail(probe, clip) {
+  // True when the clip differs from the "no effects applied" defaults.
+  function hasEffects(clip) {
+    return clip.brightness !== 1 || clip.contrast !== 1 || clip.saturation !== 1
+      || clip.filterPreset !== 'none' || clip.fadeIn > 0 || clip.fadeOut > 0;
+  }
+
+  function resetEffects(clip) {
+    clip.brightness = 1;
+    clip.contrast = 1;
+    clip.saturation = 1;
+    clip.filterPreset = 'none';
+    clip.fadeIn = 0;
+    clip.fadeOut = 0;
+  }
+
+  // Filmstrip frames are captured at roughly the size they're displayed at
+  // on the timeline, so tiling them looks sharp instead of upscaling one
+  // small thumbnail across the whole clip block.
+  const THUMB_W = 320;
+  const THUMB_H = 180;
+
+  function grabFrame(probe) {
     try {
       const canvas = document.createElement('canvas');
-      const w = 160, h = 90;
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = THUMB_W;
+      canvas.height = THUMB_H;
       const ctx = canvas.getContext('2d');
-      const rect = VE.utils.containRect(probe.videoWidth, probe.videoHeight, w, h);
+      const rect = VE.utils.containRect(probe.videoWidth, probe.videoHeight, THUMB_W, THUMB_H);
       ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillRect(0, 0, THUMB_W, THUMB_H);
       ctx.drawImage(probe, rect.x, rect.y, rect.w, rect.h);
-      clip.thumb = canvas.toDataURL('image/jpeg', 0.7);
+      return canvas.toDataURL('image/jpeg', 0.72);
     } catch (e) {
-      // Thumbnail generation is best-effort; ignore failures (e.g. tainted canvas).
+      // Frame capture is best-effort; ignore failures (e.g. tainted canvas).
+      return null;
     }
   }
 
-  // Loads metadata (duration) and a thumbnail for a clip using a detached
-  // <video> element, so it never interferes with the shared playback stage.
+  // Seeks the probe element, resolving on 'seeked' but never hanging: a
+  // decoder that refuses to seek would otherwise stall filmstrip capture.
+  function seekProbe(probe, time) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        probe.removeEventListener('seeked', finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, 3000);
+      probe.addEventListener('seeked', finish, { once: true });
+      probe.currentTime = time;
+    });
+  }
+
+  async function captureFilmstrip(probe, clip, onUpdate) {
+    const duration = clip.srcDuration;
+    if (!duration) return;
+    const count = Math.min(16, Math.max(4, Math.ceil(duration / 2)));
+    const frames = [];
+    for (let i = 0; i < count; i++) {
+      const time = Math.min(((i + 0.5) * duration) / count, Math.max(duration - 0.05, 0));
+      await seekProbe(probe, time);
+      const src = grabFrame(probe);
+      if (!src) break;
+      frames.push({ time, src });
+      // Publish progressively so the timeline sharpens up as frames land.
+      clip.thumbs = frames.slice();
+      if (!clip.thumb) clip.thumb = src;
+      onUpdate();
+    }
+  }
+
+  // Loads metadata (duration) and filmstrip frames for a clip using a
+  // detached <video> element, so it never interferes with playback.
   function hydrateClip(clip, onUpdate) {
     const probe = document.createElement('video');
     probe.preload = 'auto';
@@ -50,27 +115,37 @@ VE.clips = (() => {
 
     probe.addEventListener('loadedmetadata', async () => {
       // resolveVideoDuration may itself perform seeks (Infinity-duration
-      // workaround), so it must fully settle before we register the
-      // one-time 'seeked' listener used for the thumbnail capture below.
+      // workaround), so it must fully settle before filmstrip capture
+      // starts issuing its own seeks.
       const duration = await resolveVideoDuration(probe);
       clip.srcDuration = duration;
       clip.outPoint = duration;
       clip.ready = true;
       onUpdate();
 
-      const seekTarget = Math.min(0.15, duration / 2 || 0);
-      await new Promise((resolve) => {
-        probe.addEventListener('seeked', resolve, { once: true });
-        probe.currentTime = seekTarget;
-      });
-      captureThumbnail(probe, clip);
-      onUpdate();
+      await captureFilmstrip(probe, clip, onUpdate);
     }, { once: true });
 
     probe.addEventListener('error', () => {
       console.warn('Failed to load video metadata for', clip.name);
       onUpdate();
     }, { once: true });
+  }
+
+  // Picks the captured frame closest to a given source timestamp.
+  function nearestThumb(clip, srcTime) {
+    const thumbs = clip.thumbs || [];
+    if (thumbs.length === 0) return null;
+    let best = thumbs[0];
+    let bestDelta = Math.abs(best.time - srcTime);
+    for (let i = 1; i < thumbs.length; i++) {
+      const delta = Math.abs(thumbs[i].time - srcTime);
+      if (delta < bestDelta) {
+        best = thumbs[i];
+        bestDelta = delta;
+      }
+    }
+    return best;
   }
 
   function addFiles(fileList, onUpdate) {
@@ -171,6 +246,9 @@ VE.clips = (() => {
 
   return {
     addFiles,
+    hasEffects,
+    resetEffects,
+    nearestThumb,
     clipDuration,
     computeLayout,
     getClipById,

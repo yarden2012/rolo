@@ -31,6 +31,12 @@ Opening `index.html` directly via `file://` also works in most browsers.
   - Click/drag on the ruler or empty timeline area to **scrub/seek**.
   - Zoom the timeline in/out for fine-grained trimming.
 - **Per-clip properties**: volume, mute, and playback speed (0.5×–2×).
+- **Effects** (per clip, applied live in the preview and baked into the export):
+  - Filter presets: Grayscale, Sepia, Warm, Cool, Vintage, Invert, Blur
+  - Brightness, contrast, and saturation sliders
+  - Fade in / fade out, in seconds
+  - "Reset Effects" restores the clip to untouched; clips carrying effects are
+    marked with an `fx` badge on the timeline.
 - **Text overlays**: add timed text overlays with position, size, and color,
   rendered live in the preview and baked into the export.
 - **Export** the whole composed timeline to a downloadable `.webm` file
@@ -58,5 +64,7 @@ then downloads the result.
   natively. There's no client-side MP4 encoding without a much heavier
   dependency like ffmpeg.wasm.
 - Single track only (no picture-in-picture/overlapping video layers).
-- No crossfade/transition effects between clips.
+- Fades are per-clip (to and from black); there are no cross-clip transitions.
+- Effects rely on the canvas `filter` API, which needs a reasonably modern
+  browser (Chrome/Edge/Firefox, Safari 15.4+).
 - Playback/export format support depends entirely on your browser's codecs.

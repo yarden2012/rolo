@@ -21,6 +21,17 @@
   const duplicateBtn = document.getElementById('duplicate-btn');
   const deleteBtn = document.getElementById('delete-btn');
 
+  const clipFilter = document.getElementById('clip-filter');
+  const clipBrightness = document.getElementById('clip-brightness');
+  const clipContrast = document.getElementById('clip-contrast');
+  const clipSaturation = document.getElementById('clip-saturation');
+  const clipFadeIn = document.getElementById('clip-fade-in');
+  const clipFadeOut = document.getElementById('clip-fade-out');
+  const resetEffectsBtn = document.getElementById('reset-effects-btn');
+  const brightnessVal = document.getElementById('clip-brightness-val');
+  const contrastVal = document.getElementById('clip-contrast-val');
+  const saturationVal = document.getElementById('clip-saturation-val');
+
   const overlayForm = document.getElementById('overlay-form');
   const overlayList = document.getElementById('overlay-list');
   const overlayText = document.getElementById('overlay-text');
@@ -133,7 +144,60 @@
     clipVolume.value = clip.volume;
     clipMuted.checked = clip.muted;
     clipSpeed.value = String(clip.speed);
+    clipFilter.value = clip.filterPreset;
+    clipBrightness.value = clip.brightness;
+    clipContrast.value = clip.contrast;
+    clipSaturation.value = clip.saturation;
+    clipFadeIn.value = clip.fadeIn;
+    clipFadeOut.value = clip.fadeOut;
+    renderEffectLabels(clip);
   }
+
+  function renderEffectLabels(clip) {
+    brightnessVal.textContent = Math.round(clip.brightness * 100) + '%';
+    contrastVal.textContent = Math.round(clip.contrast * 100) + '%';
+    saturationVal.textContent = Math.round(clip.saturation * 100) + '%';
+  }
+
+  // Applies an effect change to the selected clip and repaints immediately,
+  // so adjustments are visible even while playback is paused.
+  function updateEffect(mutate, { rerenderTimeline = false } = {}) {
+    const clip = VE.clips.getClipById(VE.state.selectedClipId);
+    if (!clip) return;
+    mutate(clip);
+    renderEffectLabels(clip);
+    VE.player.drawFrame(VE.state.playhead);
+    if (rerenderTimeline) VE.timeline.render();
+  }
+
+  clipFilter.addEventListener('change', () => {
+    updateEffect((clip) => { clip.filterPreset = clipFilter.value; }, { rerenderTimeline: true });
+  });
+  clipBrightness.addEventListener('input', () => {
+    updateEffect((clip) => { clip.brightness = Number(clipBrightness.value); });
+  });
+  clipContrast.addEventListener('input', () => {
+    updateEffect((clip) => { clip.contrast = Number(clipContrast.value); });
+  });
+  clipSaturation.addEventListener('input', () => {
+    updateEffect((clip) => { clip.saturation = Number(clipSaturation.value); });
+  });
+  clipBrightness.addEventListener('change', () => VE.timeline.render());
+  clipContrast.addEventListener('change', () => VE.timeline.render());
+  clipSaturation.addEventListener('change', () => VE.timeline.render());
+  clipFadeIn.addEventListener('input', () => {
+    updateEffect((clip) => { clip.fadeIn = Math.max(0, Number(clipFadeIn.value) || 0); }, { rerenderTimeline: true });
+  });
+  clipFadeOut.addEventListener('input', () => {
+    updateEffect((clip) => { clip.fadeOut = Math.max(0, Number(clipFadeOut.value) || 0); }, { rerenderTimeline: true });
+  });
+  resetEffectsBtn.addEventListener('click', () => {
+    const clip = VE.clips.getClipById(VE.state.selectedClipId);
+    if (!clip) return;
+    VE.clips.resetEffects(clip);
+    refreshAll();
+    VE.player.drawFrame(VE.state.playhead);
+  });
 
   clipVolume.addEventListener('input', () => {
     const clip = VE.clips.getClipById(VE.state.selectedClipId);

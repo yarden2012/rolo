@@ -47,15 +47,40 @@ VE.timeline = (() => {
     totalTimeEl.textContent = formatTime(totalDuration);
   }
 
+  const CLIP_HEIGHT = 96;   // keep in sync with .clip-block height in styles.css
+
+  // Tiles captured frames across the clip's width at roughly their native
+  // size. Stretching a single thumbnail over a wide block (the old
+  // approach) upscaled a 160px image to over 1000px and looked blurry.
+  function buildFilmstrip(clip, blockWidth) {
+    const strip = document.createElement('div');
+    strip.className = 'clip-filmstrip';
+    if (!clip.thumbs || clip.thumbs.length === 0) return strip;
+
+    const tileW = Math.round((CLIP_HEIGHT * 16) / 9);
+    const tileCount = Math.max(1, Math.ceil(blockWidth / tileW));
+    const span = clip.outPoint - clip.inPoint;
+    for (let i = 0; i < tileCount; i++) {
+      const frac = tileCount === 1 ? 0.5 : (i + 0.5) / tileCount;
+      const thumb = VE.clips.nearestThumb(clip, clip.inPoint + frac * span);
+      if (!thumb) break;
+      const tile = document.createElement('div');
+      tile.className = 'clip-frame';
+      tile.style.width = tileW + 'px';
+      tile.style.backgroundImage = `url(${thumb.src})`;
+      strip.appendChild(tile);
+    }
+    return strip;
+  }
+
   function buildClipBlock(item, px) {
     const clip = item.clip;
     const block = document.createElement('div');
     block.className = 'clip-block' + (clip.id === VE.state.selectedClipId ? ' selected' : '');
     block.dataset.id = clip.id;
-    block.style.width = Math.max(item.duration * px, 4) + 'px';
-    if (clip.thumb) {
-      block.style.backgroundImage = `url(${clip.thumb})`;
-    }
+    const blockWidth = Math.max(item.duration * px, 4);
+    block.style.width = blockWidth + 'px';
+    block.appendChild(buildFilmstrip(clip, blockWidth));
 
     const body = document.createElement('div');
     body.className = 'clip-body';
@@ -71,10 +96,13 @@ VE.timeline = (() => {
       badge.textContent = '🔇';
       block.appendChild(badge);
     }
-    if (clip.speed !== 1) {
+    const badges = [];
+    if (clip.speed !== 1) badges.push(clip.speed + '×');
+    if (VE.clips.hasEffects(clip)) badges.push('fx');
+    if (badges.length) {
       const badge = document.createElement('div');
       badge.className = 'clip-speed-badge';
-      badge.textContent = clip.speed + '×';
+      badge.textContent = badges.join(' · ');
       block.appendChild(badge);
     }
 

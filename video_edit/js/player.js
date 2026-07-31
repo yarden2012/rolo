@@ -113,14 +113,67 @@ VE.player = (() => {
     gainNode.gain.value = clip.muted ? 0 : clamp(clip.volume, 0, 1);
   }
 
+  // Named looks built from CSS filter functions; combined with the
+  // per-clip brightness/contrast/saturation adjustments below.
+  const FILTER_PRESETS = {
+    none: '',
+    grayscale: 'grayscale(1)',
+    sepia: 'sepia(0.85)',
+    invert: 'invert(1)',
+    warm: 'sepia(0.35) saturate(1.4) hue-rotate(-12deg)',
+    cool: 'saturate(1.15) hue-rotate(18deg)',
+    vintage: 'sepia(0.45) contrast(1.15) saturate(0.85)',
+    blur: 'blur(4px)',
+  };
+
+  function buildFilterString(clip) {
+    const parts = [];
+    if (clip.brightness !== 1) parts.push(`brightness(${clip.brightness})`);
+    if (clip.contrast !== 1) parts.push(`contrast(${clip.contrast})`);
+    if (clip.saturation !== 1) parts.push(`saturate(${clip.saturation})`);
+    const preset = FILTER_PRESETS[clip.filterPreset];
+    if (preset) parts.push(preset);
+    return parts.length ? parts.join(' ') : 'none';
+  }
+
+  // Fades are drawn as a black veil over the frame, so they compose over
+  // whatever the clip's colour filters produced.
+  function drawFade(clip, item, globalTime) {
+    const sinceStart = globalTime - item.start;
+    const untilEnd = item.start + item.duration - globalTime;
+    let alpha = 0;
+    if (clip.fadeIn > 0 && sinceStart < clip.fadeIn) {
+      alpha = Math.max(alpha, 1 - sinceStart / clip.fadeIn);
+    }
+    if (clip.fadeOut > 0 && untilEnd < clip.fadeOut) {
+      alpha = Math.max(alpha, 1 - untilEnd / clip.fadeOut);
+    }
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
   function drawFrame(globalTime) {
     if (!canvas) return;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const item = findItemAt(globalTime);
+    const clip = item ? item.clip : null;
+
     if (stageVideo.readyState >= 2 && stageVideo.videoWidth) {
       const rect = VE.utils.containRect(stageVideo.videoWidth, stageVideo.videoHeight, canvas.width, canvas.height);
+      // save/restore keeps ctx.filter from leaking onto the overlay text.
+      ctx.save();
+      if (clip) ctx.filter = buildFilterString(clip);
       ctx.drawImage(stageVideo, rect.x, rect.y, rect.w, rect.h);
+      ctx.restore();
     }
+
+    if (clip) drawFade(clip, item, globalTime);
     VE.overlays.render(ctx, canvas.width, canvas.height, globalTime);
   }
 
