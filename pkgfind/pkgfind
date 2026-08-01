@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# pkgfind launcher. Resolves symlinks so this can live in ~/.local/bin.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Must be the system Python. Homebrew ships its own python3 with no PyGObject,
+# and it wins on PATH for anyone who has Homebrew set up — so never rely on
+# PATH here. (Homebrew itself is found by absolute path in backends.py.)
+PYTHON=/usr/bin/python3
+[ -x "$PYTHON" ] || PYTHON="$(command -v python3)"
+
+exec "$PYTHON" "$HERE/pkgfind.py" "$@"
