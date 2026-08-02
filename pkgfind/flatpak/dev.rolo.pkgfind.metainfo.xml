@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.rolo.pkgfind</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>pkgfind</name>
+  <summary>One search box over every app source on the system</summary>
+  <description>
+    <p>
+      Search Flatpak remotes, Fedora RPM repositories (via rpm-ostree), Homebrew,
+      and distrobox containers from a single search box, and install straight
+      from the results. Built for atomic Fedora systems such as Bazzite,
+      Silverblue and Kinoite.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.rolo.pkgfind.desktop</launchable>
+  <provides>
+    <binary>pkgfind</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-08-02"/>
+  </releases>
+</component>

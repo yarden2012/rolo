@@ -1,0 +1,3 @@
+#!/bin/sh
+# Flatpak entry point: the GNOME runtime's python3 ships PyGObject + libadwaita.
+exec python3 /app/lib/pkgfind/pkgfind.py "$@"

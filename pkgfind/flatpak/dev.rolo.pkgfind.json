@@ -1,0 +1,34 @@
+{
+  "id": "dev.rolo.pkgfind",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "49",
+  "sdk": "org.gnome.Sdk",
+  "command": "pkgfind",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--talk-name=org.freedesktop.Flatpak"
+  ],
+  "modules": [
+    {
+      "name": "pkgfind",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm644 -t /app/lib/pkgfind pkgfind.py app.py backends.py",
+        "install -Dm755 flatpak/pkgfind-launcher /app/bin/pkgfind",
+        "install -Dm644 flatpak/dev.rolo.pkgfind.desktop -t /app/share/applications",
+        "install -Dm644 flatpak/dev.rolo.pkgfind.svg -t /app/share/icons/hicolor/scalable/apps",
+        "install -Dm644 flatpak/dev.rolo.pkgfind.metainfo.xml -t /app/share/metainfo"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "..",
+          "skip": ["__pycache__", ".flatpak-builder", "flatpak/build", "flatpak/repo"]
+        }
+      ]
+    }
+  ]
+}
