@@ -87,3 +87,9 @@ colour in `BADGE_CLASS` in `app.py` if you want one.
 brew tap yarden2012/rolo https://github.com/yarden2012/rolo
 brew install yarden2012/rolo/pkgfind
 ```
+
+### macOS
+
+Works via Homebrew: the terminal mode searches Homebrew (the only package
+source on a Mac), and the GUI uses the GTK stack that the formula installs
+automatically. Requires macOS 12.3+.

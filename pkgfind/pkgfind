@@ -2,12 +2,35 @@
 # pkgfind launcher. Resolves symlinks so this can live in ~/.local/bin.
 set -euo pipefail
 
-HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Portable symlink resolution — macOS only gained `readlink -f` in 12.3.
+resolve() {
+    local target="$1" dir
+    while [ -L "$target" ]; do
+        dir="$(cd "$(dirname "$target")" && pwd)"
+        target="$(readlink "$target")"
+        case "$target" in /*) ;; *) target="$dir/$target" ;; esac
+    done
+    printf '%s\n' "$target"
+}
 
-# Must be the system Python. Homebrew ships its own python3 with no PyGObject,
-# and it wins on PATH for anyone who has Homebrew set up — so never rely on
-# PATH here. (Homebrew itself is found by absolute path in backends.py.)
-PYTHON=/usr/bin/python3
-[ -x "$PYTHON" ] || PYTHON="$(command -v python3)"
+HERE="$(cd "$(dirname "$(resolve "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Pick a Python that has PyGObject, since the GUI needs it. On Fedora that is
+# the system Python; on macOS it is Homebrew's (once pygobject3 is installed).
+# Never rely on bare PATH order: Homebrew's python wins on PATH for anyone who
+# has Homebrew set up, but on Linux it ships without PyGObject.
+PYTHON=""
+FALLBACK=""
+for p in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    [ -x "$p" ] || continue
+    [ -n "$FALLBACK" ] || FALLBACK="$p"
+    if "$p" -c 'import gi' >/dev/null 2>&1; then
+        PYTHON="$p"
+        break
+    fi
+done
+# No PyGObject anywhere: run with what we have — the CLI works without it.
+[ -n "$PYTHON" ] || PYTHON="$FALLBACK"
+[ -n "$PYTHON" ] || PYTHON="$(command -v python3)"
 
 exec "$PYTHON" "$HERE/pkgfind.py" "$@"
