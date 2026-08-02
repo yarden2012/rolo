@@ -80,3 +80,10 @@ colour in `BADGE_CLASS` in `app.py` if you want one.
   effect after a reboot; the app says so before you commit to it.
 - A backend that fails or times out shows a toast and the other sources still
   return — one broken source never sinks the search.
+
+## Install with Homebrew
+
+```sh
+brew tap yarden2012/rolo https://github.com/yarden2012/rolo
+brew install yarden2012/rolo/pkgfind
+```
