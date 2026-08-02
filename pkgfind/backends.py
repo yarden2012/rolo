@@ -1,8 +1,13 @@
 """Search backends for pkgfind.
 
-One aggregated search across every app source available on an atomic Fedora
-system (Bazzite / Silverblue / Kinoite): Flatpak remotes, the Fedora RPM repos
-reachable through rpm-ostree, Homebrew, and any distrobox containers.
+One aggregated search across every app source available on the machine.
+
+On an atomic Fedora system (Bazzite / Silverblue / Kinoite) that means Flatpak
+remotes, the Fedora RPM repos reachable through rpm-ostree, Homebrew, and any
+distrobox containers. On other Linux distros it picks up the native package
+manager instead — apt, dnf, pacman, zypper, apk — plus snap and Homebrew. On
+Windows it covers winget, Scoop and Chocolatey. Each backend self-selects: only
+the ones whose tool is actually present ever run.
 
 Nothing in here imports GTK, so the same code drives the GUI and the CLI.
 """
@@ -15,7 +20,10 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
+
+IS_WINDOWS = sys.platform == "win32"
 
 # When pkgfind itself runs inside a Flatpak sandbox, every package tool lives on
 # the host, so commands get routed back out through the portal.
@@ -144,6 +152,173 @@ def rank_of(term: str, name: str, ident: str, summary: str) -> int:
     if t in summary_l:
         return 40
     return 50
+
+
+# -- output parsers, one per package manager --------------------------------
+#
+# Each turns a search tool's stdout into (name, summary) pairs. They are shared:
+# the same parser serves a host-level backend and the distrobox backend that
+# runs the same tool inside a container.
+
+
+def parse_dnf(out: str) -> list[tuple[str, str]]:
+    """dnf5 prints `name.arch<TAB>summary` under `Matched fields:` headers;
+    older dnf prints `name.arch : summary` under `====` headers."""
+    items = []
+    for line in out.splitlines():
+        if not line.strip() or line.startswith(("Matched fields:", "=")):
+            continue
+        if "\t" in line:
+            name, _, summary = line.partition("\t")
+        elif " : " in line:
+            name, _, summary = line.partition(" : ")
+        else:
+            continue
+        name = name.strip()
+        if not name or " " in name:
+            continue
+        items.append((strip_arch(name), summary.strip()))
+    return items
+
+
+def parse_apt(out: str) -> list[tuple[str, str]]:
+    items = []
+    for line in out.splitlines():
+        name, sep, summary = line.partition(" - ")
+        if sep and name.strip():
+            items.append((name.strip(), summary.strip()))
+    return items
+
+
+def parse_pacman(out: str) -> list[tuple[str, str]]:
+    items = []
+    pending = None
+    for line in out.splitlines():
+        if line.startswith((" ", "\t")):
+            if pending:
+                items.append((pending, line.strip()))
+                pending = None
+        elif "/" in line:
+            pending = line.split("/", 1)[1].split()[0]
+    return items
+
+
+def parse_apk(out: str) -> list[tuple[str, str]]:
+    items = []
+    for line in out.splitlines():
+        name, sep, summary = line.partition(" - ")
+        if sep:
+            items.append((name.strip().rsplit("-", 2)[0], summary.strip()))
+    return items
+
+
+def parse_zypper(out: str) -> list[tuple[str, str]]:
+    items = []
+    for line in out.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 3 and parts[1] and parts[0] not in ("S", "-"):
+            items.append((parts[1], parts[2]))
+    return items
+
+
+def parse_snap(out: str) -> list[tuple[str, str]]:
+    """`snap find` prints a table: Name  Version  Publisher  Notes  Summary."""
+    items = []
+    for line in out.splitlines():
+        if not line.strip() or line.startswith("Name "):
+            continue
+        # Five columns, but the summary (last) can contain spaces.
+        parts = line.split(None, 4)
+        if len(parts) < 5:
+            continue
+        items.append((parts[0], parts[4].strip()))
+    return items
+
+
+def _columns(out: str, first_header: str) -> tuple[list[list[str]], list[str]]:
+    """Split a whitespace-aligned CLI table into rows of cells.
+
+    winget and newer Scoop print columns padded apart by runs of two or more
+    spaces. Splitting on that keeps a value that overflows its column intact
+    (fixed-offset slicing would chop it), while still surviving single spaces
+    inside a Name. Returns (rows, lowercased column headers).
+    """
+    lines = [ln.rstrip() for ln in out.replace("\r", "\n").splitlines()]
+    header_lc = first_header.lower()
+    header_idx = next(
+        (i for i, ln in enumerate(lines) if ln.strip().lower().startswith(header_lc)),
+        None,
+    )
+    if header_idx is None:
+        return [], []
+    cols = [c.lower() for c in re.split(r"\s{2,}", lines[header_idx].strip())]
+    rows = []
+    for ln in lines[header_idx + 1:]:
+        stripped = ln.strip()
+        if not stripped or set(stripped) <= {"-", " "}:  # blank or dashed rule
+            continue
+        rows.append(re.split(r"\s{2,}", stripped))
+    return rows, cols
+
+
+def parse_winget(out: str) -> list[tuple[str, str, str]]:
+    """`winget search` prints a Name / Id / Version / Source table.
+
+    Returns (name, id, version); the id is what you install with `-e --id`.
+    """
+    rows, cols = _columns(out, "Name")
+    if not rows:
+        return []
+    try:
+        i_name, i_id = cols.index("name"), cols.index("id")
+    except ValueError:
+        return []
+    i_ver = cols.index("version") if "version" in cols else None
+    items = []
+    for cells in rows:
+        if len(cells) <= i_id or not cells[i_id]:
+            continue
+        version = cells[i_ver] if i_ver is not None and len(cells) > i_ver else ""
+        items.append((cells[i_name], cells[i_id], version))
+    return items
+
+
+def parse_scoop(out: str) -> list[tuple[str, str]]:
+    """Scoop 0.3+ prints a Name/Version/Source/Binaries table; older builds
+    print `name (version)` grouped under `'bucket' bucket:` headers."""
+    rows, cols = _columns(out, "Name")
+    if rows and "name" in cols:
+        i_name = cols.index("name")
+        i_ver = cols.index("version") if "version" in cols else None
+        out_items = []
+        for cells in rows:
+            if len(cells) <= i_name or not cells[i_name]:
+                continue
+            ver = cells[i_ver] if i_ver is not None and len(cells) > i_ver else ""
+            out_items.append((cells[i_name], f"version {ver}" if ver else ""))
+        if out_items:
+            return out_items
+    # Legacy grouped format: `name (version)` entries indented under a
+    # `'bucket' bucket:` header. Require the version paren so status lines like
+    # "No matches found." are not mistaken for packages.
+    items = []
+    for line in out.splitlines():
+        name, sep, rest = line.strip().partition(" (")
+        if sep and name.strip():
+            items.append((name.strip(), rest.rstrip(")").strip()))
+    return items
+
+
+def parse_choco(out: str) -> list[tuple[str, str]]:
+    """Run with `--limit-output`: one `name|version` per line, no chrome."""
+    items = []
+    for line in out.splitlines():
+        if "|" not in line:
+            continue
+        name, _, version = line.partition("|")
+        if name.strip():
+            items.append((name.strip(), f"version {version.strip()}" if version.strip() else ""))
+    return items
 
 
 class Backend:
@@ -470,7 +645,11 @@ class DistroboxBackend(Backend):
         if rc != 0 and not out:
             return []
 
-        parsed = getattr(self, f"_parse_{manager.replace('-', '_')}")(out)
+        parsers = {
+            "dnf5": parse_dnf, "dnf": parse_dnf, "apt-get": parse_apt,
+            "pacman": parse_pacman, "apk": parse_apk, "zypper": parse_zypper,
+        }
+        parsed = parsers[manager](out)
         results = []
         for name, summary in parsed:
             results.append(
@@ -485,70 +664,6 @@ class DistroboxBackend(Backend):
                 )
             )
         return results
-
-    # -- output parsers, one per package manager ---------------------------
-
-    @staticmethod
-    def _parse_dnf5(out: str) -> list[tuple[str, str]]:
-        """dnf5 prints `name.arch<TAB>summary` under `Matched fields:` headers;
-        older dnf prints `name.arch : summary` under `====` headers."""
-        items = []
-        for line in out.splitlines():
-            if not line.strip() or line.startswith(("Matched fields:", "=")):
-                continue
-            if "\t" in line:
-                name, _, summary = line.partition("\t")
-            elif " : " in line:
-                name, _, summary = line.partition(" : ")
-            else:
-                continue
-            name = name.strip()
-            if not name or " " in name:
-                continue
-            items.append((strip_arch(name), summary.strip()))
-        return items
-
-    _parse_dnf = _parse_dnf5
-
-    @staticmethod
-    def _parse_apt_get(out: str) -> list[tuple[str, str]]:
-        items = []
-        for line in out.splitlines():
-            name, sep, summary = line.partition(" - ")
-            if sep and name.strip():
-                items.append((name.strip(), summary.strip()))
-        return items
-
-    @staticmethod
-    def _parse_pacman(out: str) -> list[tuple[str, str]]:
-        items = []
-        pending = None
-        for line in out.splitlines():
-            if line.startswith((" ", "\t")):
-                if pending:
-                    items.append((pending, line.strip()))
-                    pending = None
-            elif "/" in line:
-                pending = line.split("/", 1)[1].split()[0]
-        return items
-
-    @staticmethod
-    def _parse_apk(out: str) -> list[tuple[str, str]]:
-        items = []
-        for line in out.splitlines():
-            name, sep, summary = line.partition(" - ")
-            if sep:
-                items.append((name.strip().rsplit("-", 2)[0], summary.strip()))
-        return items
-
-    @staticmethod
-    def _parse_zypper(out: str) -> list[tuple[str, str]]:
-        items = []
-        for line in out.splitlines():
-            parts = [p.strip() for p in line.split("|")]
-            if len(parts) >= 3 and parts[1] and parts[0] not in ("S", "-"):
-                items.append((parts[1], parts[2]))
-        return items
 
     def install_cmd(self, result: Result) -> list[str]:
         manager = self._manager() or "dnf"
@@ -575,9 +690,372 @@ class DistroboxBackend(Backend):
         return ["distrobox", "enter", "--name", self.container, "--"] + removes[manager]
 
 
+class HostBackend(Backend):
+    """A native package manager running directly on the host.
+
+    Subclasses provide the search argv, a parser, an installed-set query, and
+    the install/remove commands; this base runs the search and builds Results.
+    """
+
+    origin_label = ""
+    search_timeout = 120
+    tool = ""  # executable that must be present for this backend to apply
+
+    def available(self) -> bool:
+        return have(self.tool)
+
+    def _search_cmd(self, term: str) -> list[str]:
+        raise NotImplementedError
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        raise NotImplementedError
+
+    def _installed(self) -> set[str]:
+        return set()
+
+    def search(self, term: str) -> list[Result]:
+        rc, out, err = run(self._search_cmd(term), timeout=self.search_timeout)
+        if rc != 0 and not out:
+            raise RuntimeError(err.strip() or f"{self.label} search failed")
+        installed = self._installed()
+        results = []
+        for name, summary in self._parse(out):
+            if not name:
+                continue
+            results.append(
+                Result(
+                    source=self.id,
+                    source_label=self.label,
+                    name=name,
+                    ident=name,
+                    summary=summary,
+                    origin=self.origin_label,
+                    installed=name in installed,
+                    rank=rank_of(term, name, name, summary),
+                )
+            )
+        return results
+
+
+def _rpm_installed() -> set[str]:
+    rc, out, _ = run(["rpm", "-qa", "--qf", "%{NAME}\\n"], timeout=60)
+    return {l.strip() for l in out.splitlines() if l.strip()} if rc == 0 else set()
+
+
+class AptBackend(HostBackend):
+    """Debian, Ubuntu, Mint and friends."""
+
+    id = "apt"
+    label = "APT"
+    caveat = "Installs system-wide — asks for your password."
+    origin_label = "APT repos"
+    tool = "apt-get"
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["apt-cache", "search", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_apt(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(["dpkg-query", "-W", "-f=${Package}\\n"], timeout=60)
+        return {l.strip() for l in out.splitlines() if l.strip()} if rc == 0 else set()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apt-get", "install", "-y", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apt-get", "remove", "-y", result.ident]
+
+
+class DnfBackend(HostBackend):
+    """Traditional (non-atomic) Fedora, RHEL, CentOS, Rocky, Alma.
+
+    Held off on atomic systems, where rpm-ostree is the real install path and a
+    plain `dnf install` would not persist — RpmOstreeBackend covers those.
+    """
+
+    id = "dnf"
+    label = "DNF"
+    caveat = "Installs system-wide — asks for your password."
+    origin_label = "Fedora/RHEL repos"
+    search_timeout = 180
+    tool = "dnf"
+
+    def available(self) -> bool:
+        return have("dnf") and not have("rpm-ostree")
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["dnf", "search", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_dnf(out)
+
+    def _installed(self) -> set[str]:
+        return _rpm_installed()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "dnf", "install", "-y", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "dnf", "remove", "-y", result.ident]
+
+
+class PacmanBackend(HostBackend):
+    """Arch, Manjaro, EndeavourOS."""
+
+    id = "pacman"
+    label = "Pacman"
+    caveat = "Installs system-wide — asks for your password."
+    origin_label = "Arch repos"
+    tool = "pacman"
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["pacman", "-Ss", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_pacman(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(["pacman", "-Qq"], timeout=60)
+        return {l.strip() for l in out.splitlines() if l.strip()} if rc == 0 else set()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "pacman", "-S", "--noconfirm", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "pacman", "-R", "--noconfirm", result.ident]
+
+
+class ZypperBackend(HostBackend):
+    """openSUSE Leap and Tumbleweed."""
+
+    id = "zypper"
+    label = "Zypper"
+    caveat = "Installs system-wide — asks for your password."
+    origin_label = "openSUSE repos"
+    tool = "zypper"
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["zypper", "--non-interactive", "search", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_zypper(out)
+
+    def _installed(self) -> set[str]:
+        return _rpm_installed()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "zypper", "--non-interactive", "install", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "zypper", "--non-interactive", "remove", result.ident]
+
+
+class ApkBackend(HostBackend):
+    """Alpine Linux."""
+
+    id = "apk"
+    label = "APK"
+    caveat = "Installs system-wide — asks for your password."
+    origin_label = "Alpine repos"
+    tool = "apk"
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["apk", "search", "-d", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_apk(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(["apk", "info"], timeout=60)
+        return {l.strip() for l in out.splitlines() if l.strip()} if rc == 0 else set()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apk", "add", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apk", "del", result.ident]
+
+
+class SnapBackend(HostBackend):
+    """Snap: cross-distro, ships its own store."""
+
+    id = "snap"
+    label = "Snap"
+    origin_label = "Snap Store"
+    tool = "snap"
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["snap", "find", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_snap(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(["snap", "list"], timeout=30)
+        if rc != 0:
+            return set()
+        names = set()
+        for line in out.splitlines()[1:]:  # skip header
+            parts = line.split()
+            if parts:
+                names.add(parts[0])
+        return names
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "snap", "install", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "snap", "remove", result.ident]
+
+
+class WingetBackend(HostBackend):
+    """Windows Package Manager (winget)."""
+
+    id = "winget"
+    label = "winget"
+    origin_label = "winget"
+    tool = "winget"
+
+    def available(self) -> bool:
+        return IS_WINDOWS and have("winget")
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return [
+            "winget", "search", "--source", "winget", "-q", term,
+            "--accept-source-agreements", "--disable-interactivity",
+        ]
+
+    def search(self, term: str) -> list[Result]:
+        rc, out, err = run(self._search_cmd(term), timeout=self.search_timeout)
+        if rc != 0 and not out:
+            raise RuntimeError(err.strip() or "winget search failed")
+        installed = self._installed()
+        results = []
+        for name, ident, version in parse_winget(out):
+            results.append(
+                Result(
+                    source=self.id,
+                    source_label=self.label,
+                    name=name,
+                    ident=ident,  # the winget Id, installed with -e --id
+                    summary="",
+                    version=version,
+                    origin=self.origin_label,
+                    installed=ident in installed,
+                    rank=rank_of(term, name, ident, ""),
+                )
+            )
+        return results
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(
+            ["winget", "list", "--disable-interactivity"], timeout=60
+        )
+        if rc != 0:
+            return set()
+        return {ident for _, ident, _ in parse_winget(out)}
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return [
+            "winget", "install", "-e", "--id", result.ident,
+            "--accept-package-agreements", "--accept-source-agreements",
+        ]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["winget", "uninstall", "-e", "--id", result.ident]
+
+
+class ScoopBackend(HostBackend):
+    """Scoop, the Windows command-line installer."""
+
+    id = "scoop"
+    label = "Scoop"
+    origin_label = "Scoop"
+    tool = "scoop"
+
+    def available(self) -> bool:
+        return IS_WINDOWS and have("scoop")
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["scoop", "search", term]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_scoop(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(["scoop", "list"], timeout=60)
+        if rc != 0:
+            return set()
+        rows, cols = _columns(out, "Name")
+        if rows and "name" in cols:
+            i = cols.index("name")
+            return {r[i] for r in rows if len(r) > i and r[i]}
+        return set()
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["scoop", "install", result.ident]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["scoop", "uninstall", result.ident]
+
+
+class ChocolateyBackend(HostBackend):
+    """Chocolatey for Windows."""
+
+    id = "choco"
+    label = "Chocolatey"
+    caveat = "Runs choco, which needs an elevated (admin) shell to install."
+    origin_label = "Chocolatey"
+    tool = "choco"
+
+    def available(self) -> bool:
+        return IS_WINDOWS and have("choco")
+
+    def _search_cmd(self, term: str) -> list[str]:
+        return ["choco", "search", term, "--limit-output"]
+
+    def _parse(self, out: str) -> list[tuple[str, str]]:
+        return parse_choco(out)
+
+    def _installed(self) -> set[str]:
+        rc, out, _ = run(
+            ["choco", "list", "--local-only", "--limit-output"], timeout=60
+        )
+        if rc != 0:
+            return set()
+        return {name for name, _ in parse_choco(out)}
+
+    def install_cmd(self, result: Result) -> list[str]:
+        return ["choco", "install", result.ident, "-y"]
+
+    def remove_cmd(self, result: Result) -> list[str]:
+        return ["choco", "uninstall", result.ident, "-y"]
+
+
+# Every backend that installs onto the host directly, in display order. Each
+# self-selects through available(), so only the ones whose tool exists run —
+# a box only ever lights up the handful that match its OS and distro.
+_HOST_BACKENDS: list[type[Backend]] = [
+    FlatpakBackend,
+    RpmOstreeBackend,
+    DnfBackend,
+    AptBackend,
+    PacmanBackend,
+    ZypperBackend,
+    ApkBackend,
+    SnapBackend,
+    BrewBackend,
+    WingetBackend,
+    ScoopBackend,
+    ChocolateyBackend,
+]
+
+
 def default_backends(include_containers: bool = False) -> list[Backend]:
     """Every source that actually works on this machine right now."""
-    backends: list[Backend] = [FlatpakBackend(), RpmOstreeBackend(), BrewBackend()]
+    backends = [cls() for cls in _HOST_BACKENDS]
     backends = [b for b in backends if b.available()]
     if include_containers:
         backends += [DistroboxBackend(name) for name in DistroboxBackend.list_containers()]

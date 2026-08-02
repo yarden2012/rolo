@@ -1,20 +1,35 @@
 # pkgfind
 
-One search box over every place an app can come from on Bazzite (and any other
-atomic Fedora spin — Silverblue, Kinoite, Bluefin).
+One search box over every place an app can come from. Type once and get a
+single ranked list that tells you where each hit lives and whether it's already
+installed — instead of checking a store, then a `search` for each package
+manager, then remembering which container you put a CLI tool in.
 
-Instead of checking Discover, then `rpm-ostree search`, then `brew search`, then
-remembering which container you put a CLI tool in, you type once and get a single
-ranked list that tells you where each hit lives and whether it's already installed.
+Built first for Bazzite and the atomic Fedora spins (Silverblue, Kinoite,
+Bluefin), it now runs on ordinary Linux distros, macOS and Windows too. Every
+source self-selects: only the ones whose tool is actually on the machine ever
+run, so the same install works everywhere.
 
 ## Sources
 
-| Badge | Where it looks | Install path |
+| Badge | Where it looks | Applies to |
 |---|---|---|
-| **Flatpak** | every configured remote (Flathub etc.) | `flatpak install --user` — no password |
-| **RPM** | the Fedora repos, via `rpm-ostree search` | `rpm-ostree install` — layered, needs a reboot |
-| **Homebrew** | `homebrew/core` | `brew install` — no password |
-| **Container** | the package manager inside each distrobox container | `distrobox enter … install` |
+| **Flatpak** | every configured remote (Flathub etc.) | any Linux with Flatpak |
+| **RPM** | Fedora repos via `rpm-ostree search` (layered, needs a reboot) | atomic Fedora |
+| **DNF** | Fedora / RHEL / Rocky / Alma repos | traditional (non-atomic) Fedora & RHEL |
+| **APT** | Debian / Ubuntu / Mint repos | Debian-family |
+| **Pacman** | Arch repos | Arch / Manjaro / EndeavourOS |
+| **Zypper** | openSUSE repos | Leap / Tumbleweed |
+| **APK** | Alpine repos | Alpine |
+| **Snap** | the Snap Store | any Linux with snapd |
+| **Homebrew** | `homebrew/core` and casks | Linux & macOS |
+| **winget** | the winget source | Windows |
+| **Scoop** | your Scoop buckets | Windows |
+| **Chocolatey** | the Chocolatey gallery | Windows |
+| **Container** | the package manager inside each distrobox container | atomic / any Linux |
+
+DNF is deliberately held back on atomic systems, where `rpm-ostree` is the real
+install path — you never see both for the same package.
 
 Container search is **off by default** — reaching a stopped container has to boot
 it first, which takes longer than every other source put together. Turn it on in
@@ -22,12 +37,20 @@ the menu (or `-b` on the command line) when you want it.
 
 ## Install
 
+## Install
+
+On **Linux**, the quickest path is the local installer:
+
 ```sh
 ./install.sh
 ```
 
 Symlinks `pkgfind` into `~/.local/bin` and adds a launcher to the app menu. Nothing
-is copied, so editing files in this directory updates the installed app.
+is copied, so editing files in this directory updates the installed app. There is
+also a Flatpak (`flatpak/`) and a Homebrew formula — see the sections below.
+
+On **macOS** use Homebrew (see [macOS](#macos)). On **Windows** see
+[Windows](#windows).
 
 ## Use
 
@@ -65,12 +88,15 @@ source — an exact name match from any source beats a partial one from a
 | `backends.py` | all the search/install logic, no GTK — this is where you'd add a source |
 | `app.py` | the GTK4 / libadwaita interface |
 | `pkgfind.py` | entry point and the CLI |
-| `pkgfind` | launcher that puts Homebrew on `PATH` first |
+| `pkgfind` | Linux/macOS launcher — finds a Python that has PyGObject |
+| `pkgfind.cmd` | Windows launcher |
 
 Adding a source means subclassing `Backend` in `backends.py` (implement
-`available`, `search`, `install_cmd`, `remove_cmd`) and adding it to
-`default_backends()`. The GUI picks it up with no changes — give it a badge
-colour in `BADGE_CLASS` in `app.py` if you want one.
+`available`, `search`, `install_cmd`, `remove_cmd`) and adding it to the
+`_HOST_BACKENDS` list. Host package managers can subclass `HostBackend`, which
+only needs the search argv, a parser, and the install/remove commands. The GUI
+picks it up with no changes — give it a badge colour in `BADGE_CLASS` in
+`app.py` if you want one.
 
 ## Notes
 
@@ -111,3 +137,22 @@ pkgfind -c firefox     # print results in the terminal instead
 Note that Homebrew is the only package source on a Mac, so pkgfind there is
 essentially a nicer `brew search` — the multi-source view is where it earns its
 keep on Linux.
+
+### Windows
+
+pkgfind searches **winget**, **Scoop** and **Chocolatey** — whichever of them
+you have installed. Clone the repo and run it with Python 3:
+
+```powershell
+git clone https://github.com/yarden2012/rolo
+cd rolo\pkgfind
+python pkgfind.py -c firefox        # terminal search across winget/Scoop/choco
+```
+
+`pkgfind.cmd` is a launcher you can drop on your `PATH` so `pkgfind …` works
+from anywhere. The terminal mode is the supported path on Windows; the GUI needs
+a GTK4 + PyGObject runtime (via MSYS2 or the PyGObject wheels), and pkgfind falls
+back to a clear message pointing you at `-c` if that runtime isn't present.
+
+Installing from the results runs the native tool: `winget install`, `scoop
+install`, or `choco install` (Chocolatey needs an elevated/admin shell).

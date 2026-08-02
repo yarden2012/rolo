@@ -32,6 +32,15 @@ CSS = """
 .badge-flatpak { background: alpha(@accent_bg_color, 0.18); color: @accent_color; }
 .badge-rpm     { background: alpha(@warning_bg_color, 0.20); color: @warning_color; }
 .badge-brew    { background: alpha(@success_bg_color, 0.20); color: @success_color; }
+.badge-dnf     { background: alpha(@blue_3, 0.20);    color: @blue_2; }
+.badge-apt     { background: alpha(@red_3, 0.18);     color: @red_2; }
+.badge-pacman  { background: alpha(@blue_3, 0.20);    color: @blue_1; }
+.badge-zypper  { background: alpha(@green_4, 0.22);   color: @green_2; }
+.badge-apk     { background: alpha(@blue_4, 0.20);    color: @blue_2; }
+.badge-snap    { background: alpha(@orange_3, 0.20);  color: @orange_2; }
+.badge-winget  { background: alpha(@accent_bg_color, 0.18); color: @accent_color; }
+.badge-scoop   { background: alpha(@yellow_4, 0.24);  color: @yellow_1; }
+.badge-choco   { background: alpha(@orange_4, 0.20);  color: @orange_2; }
 .badge-box     { background: alpha(@purple_3, 0.20); color: @purple_2; }
 .installed-tag {
   font-size: 0.72rem;
@@ -49,7 +58,12 @@ CSS = """
 .filter-bar { padding: 8px 12px; }
 """
 
-BADGE_CLASS = {"flatpak": "badge-flatpak", "rpm": "badge-rpm", "brew": "badge-brew"}
+BADGE_CLASS = {
+    "flatpak": "badge-flatpak", "rpm": "badge-rpm", "dnf": "badge-dnf",
+    "apt": "badge-apt", "pacman": "badge-pacman", "zypper": "badge-zypper",
+    "apk": "badge-apk", "snap": "badge-snap", "brew": "badge-brew",
+    "winget": "badge-winget", "scoop": "badge-scoop", "choco": "badge-choco",
+}
 
 
 def badge_class(source: str) -> str:

@@ -21,13 +21,37 @@ import backends as be  # noqa: E402
 COLORS = {
     "flatpak": "\033[38;5;75m",
     "rpm": "\033[38;5;215m",
+    "dnf": "\033[38;5;33m",
+    "apt": "\033[38;5;209m",
+    "pacman": "\033[38;5;39m",
+    "zypper": "\033[38;5;78m",
+    "apk": "\033[38;5;111m",
+    "snap": "\033[38;5;208m",
     "brew": "\033[38;5;114m",
+    "winget": "\033[38;5;75m",
+    "scoop": "\033[38;5;222m",
+    "choco": "\033[38;5;173m",
     "box": "\033[38;5;177m",
 }
 RESET = "\033[0m"
 DIM = "\033[2m"
 BOLD = "\033[1m"
 GREEN = "\033[38;5;114m"
+
+
+def _enable_ansi() -> None:
+    """On Windows 10+, switch the console into ANSI (VT) mode so the colour
+    codes above render instead of printing as literal escapes. No-op elsewhere."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        # -11 = STD_OUTPUT_HANDLE; 0x0007 = existing modes | VT processing.
+        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 0x0007)
+    except Exception:
+        pass  # Worst case colour is garbled; --no-color always works.
 
 
 def search_all(term: str, backends: list[be.Backend]) -> tuple[list[be.Result], list[str]]:
@@ -133,6 +157,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    _enable_ansi()
+
     if args.install:
         args.cli = True
 
@@ -142,12 +168,29 @@ def main() -> int:
     try:
         import app  # imported late so the CLI never needs GTK
     except ImportError as exc:
+        if sys.platform == "win32":
+            hint = (
+                "  The GUI needs a GTK4 + PyGObject runtime, which Windows Python\n"
+                "  does not ship by default (install it via MSYS2 or the PyGObject\n"
+                "  wheels). Terminal output works without it:"
+            )
+        elif sys.platform == "darwin":
+            hint = (
+                "  The GUI needs a Python with PyGObject and libadwaita — on macOS\n"
+                "  that is Homebrew's (brew install pygobject3 gtk4 libadwaita).\n"
+                "  Terminal output works without it:"
+            )
+        else:
+            hint = (
+                "  The GUI needs the system Python with PyGObject and libadwaita.\n"
+                "  Homebrew's python3 does not have them, and it wins on PATH.\n"
+                "  Terminal output works either way:"
+            )
         print(
             f"pkgfind: can't load the graphical interface ({exc}).\n"
             f"  Running under: {sys.executable}\n"
-            f"  The GUI needs the system Python with PyGObject and libadwaita.\n"
-            f"  Homebrew's python3 does not have them, and it wins on PATH.\n"
-            f"  Terminal output works either way: pkgfind -c {' '.join(args.terms)}",
+            f"{hint}\n"
+            f"  pkgfind -c {' '.join(args.terms)}",
             file=sys.stderr,
         )
         return 1
