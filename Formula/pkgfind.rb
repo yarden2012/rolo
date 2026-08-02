@@ -1,9 +1,9 @@
 class Pkgfind < Formula
   desc "Search Flatpak, Fedora RPM, Homebrew and distrobox containers at once"
   homepage "https://github.com/yarden2012/rolo/tree/main/pkgfind"
-  url "https://github.com/yarden2012/rolo/archive/4c366c20dc069f54837612caa67a42b295851085.tar.gz"
-  version "0.2.0"
-  sha256 "b5d073c4809affb9cfff8feeec2f1db339c4059a82665239c7088a73cd3ad64c"
+  url "https://github.com/yarden2012/rolo/archive/dd011b7aa403d00d61d30af0076218c453f62760.tar.gz"
+  version "0.3.0"
+  sha256 "4fed474c79b411756191037d6ee888f0bc6b49a85a87f59961d8af3b7c75310d"
   license "MIT"
 
   # The GUI is GTK4 + libadwaita through PyGObject. Linux systems this tool
