@@ -83,6 +83,8 @@ colour in `BADGE_CLASS` in `app.py` if you want one.
 
 ## Install with Homebrew
 
+Works on both Linux and macOS:
+
 ```sh
 brew tap yarden2012/rolo https://github.com/yarden2012/rolo
 brew install yarden2012/rolo/pkgfind
@@ -90,6 +92,22 @@ brew install yarden2012/rolo/pkgfind
 
 ### macOS
 
-Works via Homebrew: the terminal mode searches Homebrew (the only package
-source on a Mac), and the GUI uses the GTK stack that the formula installs
-automatically. Requires macOS 12.3+.
+**Requirements:** macOS 12.3 (Monterey) or newer, and Homebrew. If you don't
+have Homebrew yet, install it first:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Then run the two `brew` commands above. On macOS the install also pulls in the
+GTK stack the GUI needs (`gtk4`, `libadwaita`, `pygobject3`), so the first
+install can take a while as those build.
+
+```sh
+pkgfind firefox        # open the GUI with a search already run
+pkgfind -c firefox     # print results in the terminal instead
+```
+
+Note that Homebrew is the only package source on a Mac, so pkgfind there is
+essentially a nicer `brew search` — the multi-source view is where it earns its
+keep on Linux.
