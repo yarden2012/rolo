@@ -165,16 +165,26 @@ def main() -> int:
     if args.cli:
         return run_cli(args)
 
+    # Windows has no working GTK4/libadwaita, so it gets the Tkinter frontend
+    # (bundled with CPython); every other platform uses the GTK interface.
+    if sys.platform == "win32":
+        try:
+            import winapp
+        except ImportError as exc:
+            print(
+                f"pkgfind: can't load the graphical interface ({exc}).\n"
+                f"  It needs Tkinter, which normally ships with Python — reinstall\n"
+                f"  Python with the Tcl/Tk option, or use terminal output:\n"
+                f"  pkgfind -c {' '.join(args.terms)}",
+                file=sys.stderr,
+            )
+            return 1
+        return winapp.main(args.terms)
+
     try:
         import app  # imported late so the CLI never needs GTK
     except ImportError as exc:
-        if sys.platform == "win32":
-            hint = (
-                "  The GUI needs a GTK4 + PyGObject runtime, which Windows Python\n"
-                "  does not ship by default (install it via MSYS2 or the PyGObject\n"
-                "  wheels). Terminal output works without it:"
-            )
-        elif sys.platform == "darwin":
+        if sys.platform == "darwin":
             hint = (
                 "  The GUI needs a Python with PyGObject and libadwaita — on macOS\n"
                 "  that is Homebrew's (brew install pygobject3 gtk4 libadwaita).\n"

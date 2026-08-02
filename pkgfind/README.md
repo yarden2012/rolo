@@ -86,7 +86,8 @@ source — an exact name match from any source beats a partial one from a
 | File | What it does |
 |---|---|
 | `backends.py` | all the search/install logic, no GTK — this is where you'd add a source |
-| `app.py` | the GTK4 / libadwaita interface |
+| `app.py` | the GTK4 / libadwaita interface (Linux/macOS) |
+| `winapp.py` | the Tkinter interface (Windows) |
 | `pkgfind.py` | entry point and the CLI |
 | `pkgfind` | Linux/macOS launcher — finds a Python that has PyGObject |
 | `pkgfind.cmd` | Windows launcher |
@@ -146,13 +147,18 @@ you have installed. Clone the repo and run it with Python 3:
 ```powershell
 git clone https://github.com/yarden2012/rolo
 cd rolo\pkgfind
+python pkgfind.py firefox           # graphical window
 python pkgfind.py -c firefox        # terminal search across winget/Scoop/choco
 ```
 
-`pkgfind.cmd` is a launcher you can drop on your `PATH` so `pkgfind …` works
-from anywhere. The terminal mode is the supported path on Windows; the GUI needs
-a GTK4 + PyGObject runtime (via MSYS2 or the PyGObject wheels), and pkgfind falls
-back to a clear message pointing you at `-c` if that runtime isn't present.
+Windows gets its own **Tkinter** GUI (`winapp.py`) — a search box, a results
+table, and a details pane that installs or removes the selection while streaming
+the command's output. Tkinter ships inside CPython, so there is nothing extra to
+install; if a stripped-down Python is missing it, pkgfind prints a message and
+`-c` still works. (The main GTK4/libadwaita interface is Linux/macOS only, which
+is why Windows has a separate, lighter frontend over the same backends.)
 
-Installing from the results runs the native tool: `winget install`, `scoop
-install`, or `choco install` (Chocolatey needs an elevated/admin shell).
+`pkgfind.cmd` is a launcher you can drop on your `PATH` so `pkgfind …` works
+from anywhere. Installing from the results runs the native tool: `winget
+install`, `scoop install`, or `choco install` (Chocolatey needs an
+elevated/admin shell).
