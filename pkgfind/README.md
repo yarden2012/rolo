@@ -142,11 +142,25 @@ keep on Linux.
 ### Windows
 
 pkgfind searches **winget**, **Scoop** and **Chocolatey** — whichever of them
-you have installed. Clone the repo and run it with Python 3:
+you have installed. It needs **Python 3** ([python.org](https://www.python.org/)
+or `winget install Python.Python.3.12`).
+
+**Install as a Start-menu app** (recommended):
 
 ```powershell
 git clone https://github.com/yarden2012/rolo
 cd rolo\pkgfind
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+That adds **pkgfind** to the Start menu with its icon — press the Windows key,
+type "pkgfind", and it opens as a normal windowed app (no console). Add
+`-Desktop` for a desktop shortcut too. Nothing is copied, so `git pull` updates
+the installed app. Remove it with `.\uninstall-windows.ps1`.
+
+**Or just run it directly:**
+
+```powershell
 python pkgfind.py firefox           # graphical window
 python pkgfind.py -c firefox        # terminal search across winget/Scoop/choco
 ```
@@ -158,7 +172,5 @@ install; if a stripped-down Python is missing it, pkgfind prints a message and
 `-c` still works. (The main GTK4/libadwaita interface is Linux/macOS only, which
 is why Windows has a separate, lighter frontend over the same backends.)
 
-`pkgfind.cmd` is a launcher you can drop on your `PATH` so `pkgfind …` works
-from anywhere. Installing from the results runs the native tool: `winget
-install`, `scoop install`, or `choco install` (Chocolatey needs an
-elevated/admin shell).
+Installing from the results runs the native tool: `winget install`, `scoop
+install`, or `choco install` (Chocolatey needs an elevated/admin shell).

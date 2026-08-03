@@ -13,7 +13,9 @@ frontend pkgfind picks on Windows.
 from __future__ import annotations
 
 import concurrent.futures
+import os
 import queue
+import sys
 import threading
 import tkinter as tk
 from tkinter import ttk
@@ -21,6 +23,27 @@ from tkinter import ttk
 import backends as be
 
 MAX_ROWS = 300
+ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "windows", "pkgfind.ico")
+
+
+def _apply_windows_chrome(root: tk.Tk) -> None:
+    """Give the window and taskbar the pkgfind icon on Windows.
+
+    The AppUserModelID makes the taskbar group under our own icon instead of
+    Python's generic one. Both steps are best-effort and no-ops off Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("dev.rolo.pkgfind")
+    except Exception:
+        pass
+    if os.path.exists(ICON_PATH):
+        try:
+            root.iconbitmap(ICON_PATH)
+        except tk.TclError:
+            pass
 
 
 def _search_all(term: str, backends: list[be.Backend]):
@@ -56,6 +79,7 @@ class PkgfindApp:
         root.title("pkgfind")
         root.geometry("900x600")
         root.minsize(640, 420)
+        _apply_windows_chrome(root)
 
         self._build()
         self.root.after(80, self._pump)
@@ -274,6 +298,4 @@ def main(terms: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     raise SystemExit(main(sys.argv[1:]))
