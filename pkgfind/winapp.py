@@ -23,7 +23,14 @@ from tkinter import ttk
 import backends as be
 
 MAX_ROWS = 300
-ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "windows", "pkgfind.ico")
+
+# When frozen by PyInstaller the icon is unpacked into the bundle dir (_MEIPASS);
+# otherwise it sits next to this file under windows/.
+if getattr(sys, "frozen", False):
+    _ICON_BASE = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+else:
+    _ICON_BASE = os.path.dirname(os.path.abspath(__file__))
+ICON_PATH = os.path.join(_ICON_BASE, "windows", "pkgfind.ico")
 
 
 def _apply_windows_chrome(root: tk.Tk) -> None:

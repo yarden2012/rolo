@@ -142,10 +142,19 @@ keep on Linux.
 ### Windows
 
 pkgfind searches **winget**, **Scoop** and **Chocolatey** — whichever of them
-you have installed. It needs **Python 3** ([python.org](https://www.python.org/)
-or `winget install Python.Python.3.12`).
+you have installed.
 
-**Install as a Start-menu app** (recommended):
+**Installer (recommended) — no Python needed.** Download `pkgfind-setup.exe`
+from the [latest release](https://github.com/yarden2012/rolo/releases) and run
+it. It installs pkgfind to the Start menu and Add/Remove Programs, bundling
+everything — nothing else to set up. (The installer is built in CI by
+`.github/workflows/pkgfind-installer.yml`; to build it yourself on Windows, run
+`.\build-installer.ps1`.)
+
+The options below instead run pkgfind from source and need **Python 3**
+([python.org](https://www.python.org/) or `winget install Python.Python.3.12`).
+
+**Install as a Start-menu app** (from source, no compile step):
 
 ```powershell
 git clone https://github.com/yarden2012/rolo

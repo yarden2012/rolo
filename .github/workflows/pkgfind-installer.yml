@@ -1,0 +1,55 @@
+name: pkgfind Windows installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["pkgfind-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to publish a Release on tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pkgfind
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build pkgfind.exe
+        run: pyinstaller --noconfirm installer/pkgfind.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc installer\pkgfind.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkgfind-setup
+          path: pkgfind/dist/pkgfind-setup.exe
+          if-no-files-found: error
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pkgfind/dist/pkgfind-setup.exe
+          name: pkgfind ${{ github.ref_name }}
+          body: |
+            Windows installer for pkgfind. Download `pkgfind-setup.exe` below and run it —
+            it installs pkgfind to the Start menu (and Add/Remove Programs). No Python needed.
