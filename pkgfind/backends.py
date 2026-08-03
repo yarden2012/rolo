@@ -25,11 +25,20 @@ from dataclasses import dataclass, field
 
 IS_WINDOWS = sys.platform == "win32"
 
-# On Windows, package tools emit UTF-8 (winget uses … to truncate, etc.) but the
-# default decode is cp1252, which mangles it into "â€¦". Force UTF-8 there only,
-# leaving Linux/macOS on their existing locale default so their behavior is
-# unchanged.
-_TEXT_KW: dict[str, str] = {"encoding": "utf-8", "errors": "replace"} if IS_WINDOWS else {}
+# Windows-only tweaks to every child process, empty elsewhere so Linux/macOS
+# behavior is unchanged:
+#   - encoding/errors: package tools emit UTF-8, but the default decode is cp1252,
+#     which mangles winget's … truncation into "â€¦".
+#   - creationflags: the GUI runs windowed, so without CREATE_NO_WINDOW each
+#     child (winget, etc.) flashes its own empty console window on every search.
+if IS_WINDOWS:
+    _TEXT_KW: dict = {
+        "encoding": "utf-8",
+        "errors": "replace",
+        "creationflags": subprocess.CREATE_NO_WINDOW,
+    }
+else:
+    _TEXT_KW = {}
 
 # When pkgfind itself runs inside a Flatpak sandbox, every package tool lives on
 # the host, so commands get routed back out through the portal.
