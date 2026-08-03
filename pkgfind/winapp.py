@@ -103,11 +103,41 @@ class PkgfindApp:
 
     # -- layout ------------------------------------------------------------
 
-    def _build(self) -> None:
+    def _apply_theme(self) -> None:
+        """Give the window a current look: the Sun Valley (Windows 11) theme if
+        it's available, otherwise the native theme with Segoe UI and roomier
+        rows so it doesn't look like a 1990s Tk app."""
+        import tkinter.font as tkfont
+
+        style = ttk.Style()
         try:
-            ttk.Style().theme_use("vista")  # native look on Windows
+            import sv_ttk
+
+            sv_ttk.set_theme("light")
+        except Exception:
+            for theme in ("vista", "clam"):
+                try:
+                    style.theme_use(theme)
+                    break
+                except tk.TclError:
+                    continue
+
+        if sys.platform == "win32":
+            for name in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont"):
+                try:
+                    tkfont.nametofont(name).configure(family="Segoe UI", size=10)
+                except tk.TclError:
+                    pass
+
+        # Comfortable rows and a clear header, regardless of theme.
+        style.configure("Treeview", rowheight=30)
+        try:
+            style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10))
         except tk.TclError:
             pass
+
+    def _build(self) -> None:
+        self._apply_theme()
 
         bar = ttk.Frame(self.root, padding=(10, 10, 10, 6))
         bar.pack(fill="x")

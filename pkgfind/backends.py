@@ -25,6 +25,12 @@ from dataclasses import dataclass, field
 
 IS_WINDOWS = sys.platform == "win32"
 
+# On Windows, package tools emit UTF-8 (winget uses … to truncate, etc.) but the
+# default decode is cp1252, which mangles it into "â€¦". Force UTF-8 there only,
+# leaving Linux/macOS on their existing locale default so their behavior is
+# unchanged.
+_TEXT_KW: dict[str, str] = {"encoding": "utf-8", "errors": "replace"} if IS_WINDOWS else {}
+
 # When pkgfind itself runs inside a Flatpak sandbox, every package tool lives on
 # the host, so commands get routed back out through the portal.
 _IN_SANDBOX = os.path.exists("/.flatpak-info") and shutil.which("flatpak-spawn")
@@ -85,6 +91,7 @@ def run(
             text=True,
             timeout=timeout,
             env=child_env,
+            **_TEXT_KW,
         )
         return proc.returncode, proc.stdout, proc.stderr
     except FileNotFoundError:
@@ -107,6 +114,7 @@ def popen(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.Popen
         text=True,
         bufsize=1,
         env=child_env,
+        **_TEXT_KW,
     )
 
 

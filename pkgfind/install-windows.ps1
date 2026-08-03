@@ -39,6 +39,13 @@ if (-not $pythonw) {
     throw "Couldn't find pythonw.exe or pyw.exe. Install Python 3 first: winget install Python.Python.3.12"
 }
 
+# Best-effort: the modern (Windows 11) theme. The app falls back to the native
+# theme if this isn't installed, so a failure here is fine.
+try {
+    $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if ($py) { & $py -m pip install --user --quiet sv-ttk 2>$null }
+} catch { }
+
 function New-PkgfindShortcut($path) {
     $shell = New-Object -ComObject WScript.Shell
     $sc = $shell.CreateShortcut($path)

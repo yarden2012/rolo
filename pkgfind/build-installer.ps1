@@ -15,8 +15,8 @@ param([switch]$SkipInno)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-Write-Host "==> Installing PyInstaller"
-python -m pip install --upgrade pyinstaller
+Write-Host "==> Installing build deps"
+python -m pip install --upgrade pyinstaller sv-ttk
 
 Write-Host "==> Building pkgfind.exe"
 python -m PyInstaller --noconfirm installer\pkgfind.spec
