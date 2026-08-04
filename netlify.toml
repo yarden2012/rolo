@@ -1,0 +1,4 @@
+# Netlify config for the pkgfind landing page.
+# The site is a static file in docs/ — no build step.
+[build]
+  publish = "docs"
