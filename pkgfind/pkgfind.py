@@ -75,6 +75,96 @@ def search_all(term: str, backends: list[be.Backend]) -> tuple[list[be.Result], 
     return results, errors
 
 
+def outdated_all(backends: list[be.Backend]) -> tuple[list[be.Result], list[str]]:
+    """Ask every backend what's upgradable, in parallel."""
+    updates: list[be.Result] = []
+    errors: list[str] = []
+
+    def one(backend: be.Backend):
+        try:
+            return backend, backend.outdated(), None
+        except Exception as exc:
+            return backend, [], str(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(len(backends), 1)) as pool:
+        for backend, ups, error in pool.map(one, backends):
+            updates.extend(ups)
+            if error:
+                errors.append(f"{backend.label}: {error}")
+
+    updates.sort(key=lambda r: (r.source_label.lower(), r.name.lower()))
+    return updates, errors
+
+
+def _stream(cmd: list[str], backend: be.Backend) -> int:
+    """Run a command, echoing it first and streaming its output."""
+    print(f"\n$ {' '.join(shlex.quote(c) for c in cmd)}\n")
+    if backend.caveat:
+        print(f"note: {backend.caveat}\n")
+    proc = be.popen(cmd, env=backend.env())
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        sys.stdout.write(line)
+    return proc.wait()
+
+
+def run_updates(args: argparse.Namespace) -> int:
+    backends = be.default_backends(include_containers=args.containers)
+    if not backends:
+        print("pkgfind: no package managers found on this system", file=sys.stderr)
+        return 1
+
+    color = sys.stdout.isatty() and not args.no_color
+    tint = (lambda text, key: f"{COLORS.get(key, '')}{text}{RESET}") if color else (
+        lambda text, key: text
+    )
+    dim = (lambda text: f"{DIM}{text}{RESET}") if color else (lambda text: text)
+    bold = (lambda text: f"{BOLD}{text}{RESET}") if color else (lambda text: text)
+
+    updates, errors = outdated_all(backends)
+    for error in errors:
+        print(f"warning: {error}", file=sys.stderr)
+
+    if args.upgrade:
+        target = next(
+            (r for r in updates if args.upgrade in (r.ident, r.name)), None
+        )
+        if target is None:
+            print(f"pkgfind: {args.upgrade!r} has no pending update", file=sys.stderr)
+            return 1
+        backend = next(b for b in backends if b.id == target.source)
+        return _stream(backend.upgrade_cmd(target), backend)
+
+    if args.upgrade_all:
+        if not updates:
+            print("Everything is up to date.")
+            return 0
+        code = 0
+        for source in sorted({r.source for r in updates}):
+            backend = next((b for b in backends if b.id == source), None)
+            cmd = backend.upgrade_all_cmd() if backend else []
+            if backend and cmd:
+                code = _stream(cmd, backend) or code
+        return code
+
+    if not updates:
+        print("Everything is up to date.")
+        return 0
+
+    width = max(len(r.source_label) for r in updates)
+    for result in updates:
+        badge = tint(result.source_label.ljust(width), result.source.split(":")[0])
+        current = result.version or "?"
+        newest = result.newest or "?"
+        print(f"{badge}  {bold(result.ident)}  {dim(current)} → {newest}")
+
+    count = len(updates)
+    print()
+    print(dim(f"{count} update{'s' if count != 1 else ''} available"))
+    print(dim("upgrade with:  pkgfind --upgrade <id>   ·   pkgfind --upgrade-all"))
+    return 0
+
+
 def run_cli(args: argparse.Namespace) -> int:
     term = " ".join(args.terms).strip()
     if len(term) < 2:
@@ -155,9 +245,24 @@ def main() -> int:
         "-i", "--install", metavar="ID",
         help="install this identifier from the results (implies --cli)",
     )
+    parser.add_argument(
+        "-u", "--updates", action="store_true",
+        help="list updates available for your installed apps",
+    )
+    parser.add_argument(
+        "--upgrade", metavar="ID", help="upgrade this identifier (implies --updates)",
+    )
+    parser.add_argument(
+        "--upgrade-all", action="store_true", help="upgrade everything that is out of date",
+    )
     args = parser.parse_args()
 
     _enable_ansi()
+
+    if args.upgrade or args.upgrade_all:
+        args.updates = True
+    if args.updates:
+        return run_updates(args)
 
     if args.install:
         args.cli = True

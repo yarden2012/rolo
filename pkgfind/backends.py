@@ -70,6 +70,7 @@ class Result:
     origin: str = ""  # remote / repo / container it came from
     installed: bool = False
     rank: int = 50  # lower sorts first
+    newest: str = ""  # version available to upgrade to (updates only)
 
     @property
     def key(self) -> str:
@@ -361,6 +362,28 @@ class Backend:
     def env(self) -> dict[str, str]:
         return {}
 
+    # -- updates: backends that support it override these ---------------------
+
+    def outdated(self) -> list[Result]:
+        """Installed packages from this source that have a newer version."""
+        return []
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        """Upgrade one package to its newest version."""
+        return self.install_cmd(result)
+
+    def upgrade_all_cmd(self) -> list[str]:
+        """Upgrade everything from this source at once ([] if unsupported)."""
+        return []
+
+    def _update(self, name: str, ident: str, current: str, newest: str, origin: str = "") -> Result:
+        """Build a Result describing one available update."""
+        return Result(
+            source=self.id, source_label=self.label, name=name, ident=ident,
+            version=current, newest=newest, origin=origin or self.label,
+            installed=True, rank=0,
+        )
+
 
 class FlatpakBackend(Backend):
     id = "flatpak"
@@ -419,6 +442,41 @@ class FlatpakBackend(Backend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["flatpak", "uninstall", "-y", result.ident]
+
+    def _versions(self) -> dict[str, str]:
+        rc, out, _ = run(["flatpak", "list", "--columns=application,version"], timeout=30)
+        current: dict[str, str] = {}
+        if rc == 0:
+            for line in out.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2 and parts[0].strip():
+                    current[parts[0].strip()] = parts[1].strip()
+        return current
+
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(
+            ["flatpak", "remote-ls", "--updates", "--columns=application,version,name"],
+            timeout=120,
+        )
+        if rc != 0:
+            return []
+        current = self._versions()
+        results = []
+        for line in out.splitlines():
+            parts = [p.strip() for p in line.split("\t")]
+            app = parts[0] if parts else ""
+            if not app or "." not in app:
+                continue
+            newest = parts[1] if len(parts) > 1 and parts[1] != "-" else ""
+            name = parts[2] if len(parts) > 2 and parts[2] != "-" else app
+            results.append(self._update(name, app, current.get(app, ""), newest))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["flatpak", "update", "-y", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["flatpak", "update", "-y"]
 
 
 class RpmOstreeBackend(Backend):
@@ -495,6 +553,26 @@ class RpmOstreeBackend(Backend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["rpm-ostree", "uninstall", result.ident]
+
+    def outdated(self) -> list[Result]:
+        # On an atomic system the whole image updates as one unit, not per
+        # package. `upgrade --check` exits 0 when a newer image is available.
+        rc, out, _ = run(["rpm-ostree", "upgrade", "--check"], timeout=180)
+        if rc != 0:
+            return []
+        version = ""
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("Version:"):
+                version = line.split(":", 1)[1].strip().split(" ")[0]
+                break
+        return [self._update("System image", "@system", "", version, "Fedora base image")]
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["rpm-ostree", "upgrade"]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["rpm-ostree", "upgrade"]
 
 
 class BrewBackend(Backend):
@@ -594,6 +672,38 @@ class BrewBackend(Backend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return [self._brew() or "brew", "uninstall", result.ident]
+
+    def outdated(self) -> list[Result]:
+        brew = self._brew()
+        if not brew:
+            return []
+        rc, out, _ = run([brew, "outdated", "--formula", "--verbose"], timeout=120, env=BREW_ENV)
+        if rc != 0:
+            return []
+        results = []
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # "name (1.0, 1.1) < 2.0"  or  "name (1.0) != 2.0"
+            name = line.split(" (", 1)[0].strip()
+            newest = ""
+            for sep in (" < ", " != ", " <= "):
+                if sep in line:
+                    newest = line.split(sep, 1)[1].strip()
+                    break
+            current = ""
+            if " (" in line and ")" in line:
+                current = line.split(" (", 1)[1].split(")", 1)[0]
+            if name:
+                results.append(self._update(name, name, current, newest, "homebrew/core"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return [self._brew() or "brew", "upgrade", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return [self._brew() or "brew", "upgrade"]
 
 
 class DistroboxBackend(Backend):
@@ -784,6 +894,30 @@ class AptBackend(HostBackend):
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "apt-get", "remove", "-y", result.ident]
 
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["apt", "list", "--upgradable"], timeout=120)
+        if rc != 0 and not out:
+            return []
+        results = []
+        for line in out.splitlines():
+            if "/" not in line or line.startswith("Listing"):
+                continue
+            name = line.split("/", 1)[0].strip()
+            fields = line.split()
+            newest = fields[1] if len(fields) > 1 else ""
+            current = ""
+            if "upgradable from:" in line:
+                current = line.split("upgradable from:", 1)[1].strip().rstrip("]").strip()
+            if name:
+                results.append(self._update(name, name, current, newest, "APT"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apt-get", "install", "--only-upgrade", "-y", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "apt-get", "upgrade", "-y"]
+
 
 class DnfBackend(HostBackend):
     """Traditional (non-atomic) Fedora, RHEL, CentOS, Rocky, Alma.
@@ -817,6 +951,29 @@ class DnfBackend(HostBackend):
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "dnf", "remove", "-y", result.ident]
 
+    def outdated(self) -> list[Result]:
+        # dnf check-update exits 100 when updates exist, 0 when none.
+        rc, out, _ = run(["dnf", "check-update"], timeout=180)
+        if rc not in (0, 100):
+            return []
+        results = []
+        for line in out.splitlines():
+            line = line.rstrip()
+            if not line or line[0].isspace() or line.startswith(("Last metadata", "Obsoleting", "Security")):
+                continue
+            fields = line.split()
+            if len(fields) < 3 or "." not in fields[0]:
+                continue
+            name = strip_arch(fields[0])
+            results.append(self._update(name, name, "", fields[1], fields[2]))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "dnf", "upgrade", "-y", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "dnf", "upgrade", "-y"]
+
 
 class PacmanBackend(HostBackend):
     """Arch, Manjaro, EndeavourOS."""
@@ -843,6 +1000,34 @@ class PacmanBackend(HostBackend):
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "pacman", "-R", "--noconfirm", result.ident]
 
+    def outdated(self) -> list[Result]:
+        # checkupdates (pacman-contrib) is safe and needs no root; fall back to -Qu.
+        cmd = ["checkupdates"] if have("checkupdates") else ["pacman", "-Qu"]
+        rc, out, _ = run(cmd, timeout=120)
+        if rc != 0:
+            return []
+        results = []
+        for line in out.splitlines():
+            fields = line.split()
+            if not fields:
+                continue
+            name = fields[0]
+            if "->" in fields:
+                i = fields.index("->")
+                current = fields[i - 1] if i >= 2 else ""
+                newest = fields[i + 1] if i + 1 < len(fields) else ""
+            else:
+                current, newest = "", fields[1] if len(fields) > 1 else ""
+            results.append(self._update(name, name, current, newest, "Arch"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        # Partial upgrades are unsafe on Arch — refresh the whole system.
+        return ["sudo", "pacman", "-Syu", "--noconfirm"]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "pacman", "-Syu", "--noconfirm"]
+
 
 class ZypperBackend(HostBackend):
     """openSUSE Leap and Tumbleweed."""
@@ -867,6 +1052,24 @@ class ZypperBackend(HostBackend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "zypper", "--non-interactive", "remove", result.ident]
+
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["zypper", "--non-interactive", "list-updates"], timeout=120)
+        if rc != 0 and not out:
+            return []
+        results = []
+        for line in out.splitlines():
+            parts = [p.strip() for p in line.split("|")]
+            # S | Repository | Name | Current Version | Available Version | Arch
+            if len(parts) >= 6 and parts[0] == "v":
+                results.append(self._update(parts[2], parts[2], parts[3], parts[4], "openSUSE"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "zypper", "--non-interactive", "update", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "zypper", "--non-interactive", "update"]
 
 
 class ApkBackend(HostBackend):
@@ -893,6 +1096,27 @@ class ApkBackend(HostBackend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "apk", "del", result.ident]
+
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["apk", "version", "-l", "<"], timeout=120)
+        if rc != 0:
+            return []
+        results = []
+        for line in out.splitlines():
+            line = line.strip()
+            if not line or "<" not in line or line.startswith("Installed"):
+                continue
+            left, _, right = line.partition("<")
+            pkg, newest = left.strip(), right.strip()
+            name = pkg.rsplit("-", 2)[0] if pkg.count("-") >= 2 else pkg
+            results.append(self._update(name, name, "", newest, "Alpine"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "apk", "add", "-u", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "apk", "upgrade"]
 
 
 class SnapBackend(HostBackend):
@@ -925,6 +1149,25 @@ class SnapBackend(HostBackend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["sudo", "snap", "remove", result.ident]
+
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["snap", "refresh", "--list"], timeout=60)
+        if rc != 0 or "up to date" in out.lower():
+            return []
+        results = []
+        for line in out.splitlines():
+            if not line.strip() or line.startswith("Name "):
+                continue
+            fields = line.split()
+            if len(fields) >= 4:
+                results.append(self._update(fields[0], fields[0], "", fields[1], "Snap Store"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["sudo", "snap", "refresh", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["sudo", "snap", "refresh"]
 
 
 class WingetBackend(HostBackend):
@@ -983,6 +1226,41 @@ class WingetBackend(HostBackend):
     def remove_cmd(self, result: Result) -> list[str]:
         return ["winget", "uninstall", "-e", "--id", result.ident]
 
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(
+            ["winget", "upgrade", "--include-unknown", "--disable-interactivity"], timeout=120
+        )
+        if rc != 0 and not out:
+            return []
+        rows, cols = _columns(out, "Name")
+        if not rows or "id" not in cols:
+            return []
+        i_name, i_id = cols.index("name"), cols.index("id")
+        i_ver = cols.index("version") if "version" in cols else None
+        i_av = cols.index("available") if "available" in cols else None
+        results = []
+        for c in rows:
+            if len(c) <= i_id or not c[i_id]:
+                continue
+            newest = c[i_av] if i_av is not None and len(c) > i_av else ""
+            if not newest:
+                continue
+            current = c[i_ver] if i_ver is not None and len(c) > i_ver else ""
+            results.append(self._update(c[i_name], c[i_id], current, newest, "winget"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return [
+            "winget", "upgrade", "-e", "--id", result.ident,
+            "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity",
+        ]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return [
+            "winget", "upgrade", "--all",
+            "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity",
+        ]
+
 
 class ScoopBackend(HostBackend):
     """Scoop, the Windows command-line installer."""
@@ -1017,6 +1295,31 @@ class ScoopBackend(HostBackend):
     def remove_cmd(self, result: Result) -> list[str]:
         return ["scoop", "uninstall", result.ident]
 
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["scoop", "status"], timeout=120)
+        if rc != 0 and not out:
+            return []
+        rows, cols = _columns(out, "Name")
+        if not rows or "name" not in cols:
+            return []
+        i_name = cols.index("name")
+        i_cur = cols.index("installed version") if "installed version" in cols else None
+        i_new = cols.index("latest version") if "latest version" in cols else None
+        results = []
+        for c in rows:
+            if len(c) <= i_name or not c[i_name]:
+                continue
+            current = c[i_cur] if i_cur is not None and len(c) > i_cur else ""
+            newest = c[i_new] if i_new is not None and len(c) > i_new else ""
+            results.append(self._update(c[i_name], c[i_name], current, newest, "Scoop"))
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["scoop", "update", result.ident]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["scoop", "update", "*"]
+
 
 class ChocolateyBackend(HostBackend):
     """Chocolatey for Windows."""
@@ -1049,6 +1352,26 @@ class ChocolateyBackend(HostBackend):
 
     def remove_cmd(self, result: Result) -> list[str]:
         return ["choco", "uninstall", result.ident, "-y"]
+
+    def outdated(self) -> list[Result]:
+        rc, out, _ = run(["choco", "outdated", "--limit-output"], timeout=120)
+        if not out:
+            return []
+        results = []
+        for line in out.splitlines():
+            # name|current|available|pinned
+            parts = line.split("|")
+            if len(parts) >= 3 and parts[0].strip():
+                results.append(
+                    self._update(parts[0].strip(), parts[0].strip(), parts[1].strip(), parts[2].strip(), "Chocolatey")
+                )
+        return results
+
+    def upgrade_cmd(self, result: Result) -> list[str]:
+        return ["choco", "upgrade", result.ident, "-y"]
+
+    def upgrade_all_cmd(self) -> list[str]:
+        return ["choco", "upgrade", "all", "-y"]
 
 
 # Every backend that installs onto the host directly, in display order. Each

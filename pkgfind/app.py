@@ -76,15 +76,14 @@ def copy_to_clipboard(widget: Gtk.Widget, text: str) -> None:
 
 
 class CommandDialog(Adw.Dialog):
-    """Runs one install/remove command and streams its output live."""
+    """Runs one or more commands in sequence and streams their output live."""
 
-    def __init__(self, title: str, cmd: list[str], env: dict[str, str], caveat: str = ""):
+    def __init__(self, title: str, steps: list[tuple[list[str], dict[str, str]]], caveat: str = ""):
         super().__init__()
         self.set_title(title)
         self.set_content_width(720)
         self.set_content_height(500)
-        self._cmd = cmd
-        self._env = env
+        self._steps = steps
         self._proc: subprocess.Popen | None = None
         self.succeeded = False
         self.on_finished = None
@@ -100,7 +99,7 @@ class CommandDialog(Adw.Dialog):
 
         self._status = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self._status.add_css_class("dim-label")
-        self._status.set_text(" ".join(shlex.quote(c) for c in cmd))
+        self._status.set_text(" ".join(shlex.quote(c) for c in steps[0][0]) if steps else "")
 
         self._button = Gtk.Button(label="Cancel")
         self._button.add_css_class("destructive-action")
@@ -123,22 +122,27 @@ class CommandDialog(Adw.Dialog):
 
         if caveat:
             self._append(f"note: {caveat}\n\n")
-        self._append(f"$ {' '.join(shlex.quote(c) for c in cmd)}\n\n")
 
     def start(self) -> None:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _worker(self) -> None:
-        try:
-            self._proc = be.popen(self._cmd, env=self._env)
-        except OSError as exc:
-            GLib.idle_add(self._append, f"\nfailed to start: {exc}\n")
-            GLib.idle_add(self._finish, 1)
-            return
-        assert self._proc.stdout is not None
-        for line in self._proc.stdout:
-            GLib.idle_add(self._append, line)
-        code = self._proc.wait()
+        code = 0
+        for cmd, env in self._steps:
+            GLib.idle_add(self._append, f"$ {' '.join(shlex.quote(c) for c in cmd)}\n\n")
+            try:
+                self._proc = be.popen(cmd, env=env)
+            except OSError as exc:
+                GLib.idle_add(self._append, f"\nfailed to start: {exc}\n")
+                code = 1
+                break
+            assert self._proc.stdout is not None
+            for line in self._proc.stdout:
+                GLib.idle_add(self._append, line)
+            code = self._proc.wait()
+            if code != 0:  # stop the sequence on the first failure
+                break
+            GLib.idle_add(self._append, "\n")
         GLib.idle_add(self._finish, code)
 
     def _append(self, text: str) -> bool:
@@ -273,6 +277,29 @@ class ResultRow(Adw.ActionRow):
         self.add_suffix(button)
 
 
+class UpdateRow(Adw.ActionRow):
+    """One upgradable package: current → newest, with an Update button."""
+
+    __gtype_name__ = "PkgfindUpdateRow"
+
+    def __init__(self, result: be.Result, window: "PkgfindWindow"):
+        super().__init__(title=GLib.markup_escape_text(result.name))
+        self.result = result
+        current = result.version or "installed"
+        newest = result.newest or "latest"
+        self.set_subtitle(GLib.markup_escape_text(f"{current}  →  {newest}"))
+
+        badge = Gtk.Label(label=result.source_label, valign=Gtk.Align.CENTER)
+        badge.add_css_class("source-badge")
+        badge.add_css_class(badge_class(result.source.split(":")[0]))
+        self.add_prefix(badge)
+
+        button = Gtk.Button(label="Update", valign=Gtk.Align.CENTER)
+        button.add_css_class("suggested-action")
+        button.connect("clicked", lambda _b: window.run_update(result))
+        self.add_suffix(button)
+
+
 class PkgfindWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
         super().__init__(application=app, title="pkgfind")
@@ -298,6 +325,11 @@ class PkgfindWindow(Adw.ApplicationWindow):
         self._spinner = Adw.Spinner()
         self._spinner.set_visible(False)
         header.pack_start(self._spinner)
+
+        self._updates_btn = Gtk.ToggleButton(icon_name="software-update-available-symbolic")
+        self._updates_btn.set_tooltip_text("Check for updates")
+        self._updates_btn.connect("toggled", self._on_updates_toggled)
+        header.pack_start(self._updates_btn)
 
         menu = Gio.Menu()
         menu.append("Search distrobox containers", "win.toggle-containers")
@@ -344,9 +376,57 @@ class PkgfindWindow(Adw.ApplicationWindow):
             description=self._sources_line(),
         )
 
+        # -- updates view ---------------------------------------------------
+        self._updates: list[be.Result] = []
+        self._upd_generation = 0
+        self._upd_pending: set[str] = set()
+
+        self._upd_count = Gtk.Label(xalign=0)
+        self._upd_count.add_css_class("dim-label")
+        self._upd_count.add_css_class("caption")
+        self._upd_count.set_hexpand(True)
+        self._upd_all_btn = Gtk.Button(label="Update all")
+        self._upd_all_btn.add_css_class("suggested-action")
+        self._upd_all_btn.connect("clicked", lambda _b: self.run_update_all())
+        self._upd_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._upd_bar.add_css_class("filter-bar")
+        self._upd_bar.append(self._upd_count)
+        self._upd_bar.append(self._upd_all_btn)
+        self._upd_bar.set_visible(False)
+
+        self._upd_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self._upd_list.add_css_class("boxed-list")
+        self._upd_list.set_valign(Gtk.Align.START)
+        upd_holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        upd_holder.set_margin_top(6)
+        upd_holder.set_margin_bottom(18)
+        upd_holder.set_margin_start(18)
+        upd_holder.set_margin_end(18)
+        upd_holder.append(self._upd_list)
+        upd_scroller = Gtk.ScrolledWindow(vexpand=True)
+        upd_scroller.set_child(upd_holder)
+
+        self._upd_checking = Adw.StatusPage(
+            icon_name="software-update-available-symbolic", title="Checking for updates…"
+        )
+        self._upd_uptodate = Adw.StatusPage(
+            icon_name="object-select-symbolic",
+            title="Everything's up to date",
+            description="All your installed apps are on their latest version.",
+        )
+        self._upd_inner = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self._upd_inner.add_named(self._upd_checking, "checking")
+        self._upd_inner.add_named(self._upd_uptodate, "uptodate")
+        self._upd_inner.add_named(upd_scroller, "list")
+
+        updates_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        updates_page.append(self._upd_bar)
+        updates_page.append(self._upd_inner)
+
         self._stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         self._stack.add_named(self._placeholder, "placeholder")
         self._stack.add_named(self._scroller, "results")
+        self._stack.add_named(updates_page, "updates")
         self._stack.set_visible_child_name("placeholder")
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -432,6 +512,7 @@ class PkgfindWindow(Adw.ApplicationWindow):
             self.toast("No package managers available")
             return
 
+        self._updates_btn.set_active(False)  # a search leaves the updates view
         self._generation += 1
         generation = self._generation
         self._results = []
@@ -577,7 +658,7 @@ class PkgfindWindow(Adw.ApplicationWindow):
         if response != "go":
             return
         dialog = CommandDialog(
-            f"{verb} {result.name}", cmd, backend.env(), backend.caveat
+            f"{verb} {result.name}", [(cmd, backend.env())], backend.caveat
         )
         dialog.on_finished = lambda ok: self._after_action(ok, result, verb)
         dialog.present(self)
@@ -590,6 +671,132 @@ class PkgfindWindow(Adw.ApplicationWindow):
         self.toast(f"{result.name} — {verb.lower()} complete")
         result.installed = not result.installed
         self._fill_list()
+
+    # -- updates ------------------------------------------------------------
+
+    def _on_updates_toggled(self, button: Gtk.ToggleButton) -> None:
+        if button.get_active():
+            self._filters.set_visible(False)
+            self._stack.set_visible_child_name("updates")
+            self.check_updates()
+        else:
+            self._stack.set_visible_child_name("results" if self._results else "placeholder")
+            self._filters.set_visible(bool(self._results))
+
+    def check_updates(self) -> None:
+        if not self._backends:
+            return
+        self._upd_generation += 1
+        generation = self._upd_generation
+        self._updates = []
+        self._upd_pending = set(self._backends)
+        self._upd_list.remove_all()
+        self._upd_bar.set_visible(False)
+        self._upd_inner.set_visible_child_name("checking")
+        self._spinner.set_visible(True)
+        for backend in self._backends.values():
+            self._pool.submit(self._check_one, generation, backend)
+
+    def _check_one(self, generation: int, backend: be.Backend) -> None:
+        try:
+            updates = backend.outdated()
+            error = None
+        except Exception as exc:  # a broken backend must not kill the check
+            updates, error = [], str(exc)
+        GLib.idle_add(self._collect_updates, generation, backend, updates, error)
+
+    def _collect_updates(
+        self, generation: int, backend: be.Backend, updates: list, error: str | None
+    ) -> bool:
+        if generation != self._upd_generation:
+            return False
+        if error:
+            self.toast(f"{backend.label}: {error}")
+        self._updates.extend(updates)
+        self._upd_pending.discard(backend.id)
+        if not self._upd_pending:
+            self._spinner.set_visible(False)
+            self._render_updates()
+        return False
+
+    def _render_updates(self) -> None:
+        self._upd_list.remove_all()
+        if not self._updates:
+            self._upd_bar.set_visible(False)
+            self._upd_inner.set_visible_child_name("uptodate")
+            return
+        self._updates.sort(key=lambda r: (r.source_label.lower(), r.name.lower()))
+        for result in self._updates:
+            self._upd_list.append(UpdateRow(result, self))
+        count = len(self._updates)
+        self._upd_count.set_text(f"{count} update{'s' if count != 1 else ''} available")
+        self._upd_bar.set_visible(True)
+        self._upd_inner.set_visible_child_name("list")
+
+    def run_update(self, result: be.Result) -> None:
+        backend = self.backend_for(result)
+        cmd = backend.upgrade_cmd(result)
+        alert = Adw.AlertDialog(
+            heading=f"Update {result.name}?",
+            body=" ".join(shlex.quote(c) for c in cmd)
+            + (f"\n\n{backend.caveat}" if backend.caveat else ""),
+        )
+        alert.add_response("cancel", "Cancel")
+        alert.add_response("go", "Update")
+        alert.set_response_appearance("go", Adw.ResponseAppearance.SUGGESTED)
+        alert.set_default_response("go")
+        alert.set_close_response("cancel")
+        alert.connect("response", self._on_update_confirm, result, backend, cmd)
+        alert.present(self)
+
+    def _on_update_confirm(
+        self, _alert, response: str, result: be.Result, backend: be.Backend, cmd: list[str]
+    ) -> None:
+        if response != "go":
+            return
+        dialog = CommandDialog(f"Update {result.name}", [(cmd, backend.env())], backend.caveat)
+        dialog.on_finished = lambda ok: self._after_update(ok, result)
+        dialog.present(self)
+        dialog.start()
+
+    def _after_update(self, ok: bool, result: be.Result) -> None:
+        self.toast(f"{result.name} updated" if ok else f"Update failed for {result.name}")
+        if ok:
+            self.check_updates()
+
+    def run_update_all(self) -> None:
+        steps: list[tuple[list[str], dict[str, str]]] = []
+        for source in sorted({r.source for r in self._updates}):
+            backend = self._backends.get(source)
+            if not backend:
+                continue
+            cmd = backend.upgrade_all_cmd()
+            if cmd:
+                steps.append((cmd, backend.env()))
+        if not steps:
+            self.toast("Nothing to update")
+            return
+        body = "\n".join(" ".join(shlex.quote(c) for c in cmd) for cmd, _ in steps)
+        alert = Adw.AlertDialog(heading="Update everything?", body=body)
+        alert.add_response("cancel", "Cancel")
+        alert.add_response("go", "Update all")
+        alert.set_response_appearance("go", Adw.ResponseAppearance.SUGGESTED)
+        alert.set_default_response("go")
+        alert.set_close_response("cancel")
+        alert.connect("response", self._on_update_all_confirm, steps)
+        alert.present(self)
+
+    def _on_update_all_confirm(self, _alert, response: str, steps: list) -> None:
+        if response != "go":
+            return
+        dialog = CommandDialog("Update all", steps)
+        dialog.on_finished = lambda ok: self._after_update_all(ok)
+        dialog.present(self)
+        dialog.start()
+
+    def _after_update_all(self, ok: bool) -> None:
+        self.toast("Updates finished" if ok else "Some updates failed")
+        self.check_updates()
 
 
 class PkgfindApp(Adw.Application):

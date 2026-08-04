@@ -74,6 +74,27 @@ def _search_all(term: str, backends: list[be.Backend]):
     return results, errors
 
 
+def _outdated_all(backends: list[be.Backend]):
+    """Ask every backend what's upgradable, in parallel."""
+    updates: list[be.Result] = []
+    errors: list[str] = []
+
+    def one(backend: be.Backend):
+        try:
+            return backend, backend.outdated(), None
+        except Exception as exc:
+            return backend, [], str(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(len(backends), 1)) as pool:
+        for backend, ups, error in pool.map(one, backends):
+            updates.extend(ups)
+            if error:
+                errors.append(f"{backend.label}: {error}")
+
+    updates.sort(key=lambda r: (r.source_label.lower(), r.name.lower()))
+    return updates, errors
+
+
 class PkgfindApp:
     def __init__(self, root: tk.Tk, initial: str = "") -> None:
         self.root = root
@@ -82,6 +103,7 @@ class PkgfindApp:
         self._rows: dict[str, be.Result] = {}  # tree item id -> Result
         self._events: queue.Queue = queue.Queue()  # background -> UI messages
         self._busy = False
+        self._mode = "search"  # "search" or "updates"
 
         root.title("pkgfind")
         root.geometry("900x600")
@@ -146,6 +168,12 @@ class PkgfindApp:
         self._query.bind("<Return>", lambda _e: self._start_search())
         self._search_btn = ttk.Button(bar, text="Search", command=self._start_search)
         self._search_btn.pack(side="left", padx=(8, 0))
+        self._updates_btn = ttk.Button(bar, text="Updates", command=self._start_updates)
+        self._updates_btn.pack(side="left", padx=(8, 0))
+        self._updall_btn = ttk.Button(
+            bar, text="Update all", command=self._on_update_all, state="disabled"
+        )
+        self._updall_btn.pack(side="left", padx=(8, 0))
 
         columns = ("source", "package", "version", "installed")
         panes = ttk.Panedwindow(self.root, orient="vertical")
@@ -194,6 +222,11 @@ class PkgfindApp:
         if len(term) < 2:
             self._set_status("Type at least two characters to search.")
             return
+        self._mode = "search"
+        self._tree.heading("version", text="Version")
+        self._tree.heading("installed", text="Installed")
+        self._tree.column("installed", width=80, anchor="center")
+        self._updall_btn.state(["disabled"])
         self._busy = True
         self._search_btn.state(["disabled"])
         self._set_status(f"Searching for “{term}” …")
@@ -201,6 +234,82 @@ class PkgfindApp:
         self._rows.clear()
         self._clear_detail()
         threading.Thread(target=self._search_worker, args=(term,), daemon=True).start()
+
+    # -- updates -----------------------------------------------------------
+
+    def _start_updates(self) -> None:
+        if self._busy or not self.backends:
+            return
+        self._mode = "updates"
+        self._busy = True
+        self._search_btn.state(["disabled"])
+        self._updates_btn.state(["disabled"])
+        self._updall_btn.state(["disabled"])
+        self._tree.heading("version", text="Current")
+        self._tree.heading("installed", text="Latest")
+        self._tree.column("installed", width=130, anchor="w")
+        self._set_status("Checking for updates …")
+        self._tree.delete(*self._tree.get_children())
+        self._rows.clear()
+        self._clear_detail()
+        threading.Thread(target=self._updates_worker, daemon=True).start()
+
+    def _updates_worker(self) -> None:
+        updates, errors = _outdated_all(self.backends)
+        self._events.put(("updates", updates, errors))
+
+    def _show_updates(self, updates, errors) -> None:
+        for r in updates:
+            item = self._tree.insert(
+                "", "end", values=(r.source_label, r.ident, r.version or "", r.newest or ""),
+            )
+            self._rows[item] = r
+        count = len(updates)
+        if updates:
+            msg = f"{count} update{'s' if count != 1 else ''} available"
+        else:
+            msg = "Everything is up to date."
+        if errors:
+            msg += "  —  " + "; ".join(errors)
+        self._set_status(msg)
+        self._busy = False
+        self._search_btn.state(["!disabled"])
+        self._updates_btn.state(["!disabled"])
+        self._updall_btn.state(["!disabled"] if updates else ["disabled"])
+
+    def _on_update_all(self) -> None:
+        if self._busy:
+            return
+        steps = []
+        for source in sorted({r.source for r in self._rows.values()}):
+            backend = self._by_id.get(source)
+            if backend and backend.upgrade_all_cmd():
+                steps.append((backend.upgrade_all_cmd(), backend.env()))
+        if not steps:
+            return
+        self._busy = True
+        for btn in (self._search_btn, self._updates_btn, self._updall_btn, self._action):
+            btn.state(["disabled"])
+        self._console_clear()
+        threading.Thread(target=self._multi_worker, args=(steps,), daemon=True).start()
+
+    def _multi_worker(self, steps) -> None:
+        code = 0
+        for cmd, env in steps:
+            self._events.put(("output", f"$ {' '.join(cmd)}\n\n"))
+            try:
+                proc = be.popen(cmd, env=env or None)
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    self._events.put(("output", line))
+                code = proc.wait()
+            except Exception as exc:  # noqa: BLE001
+                self._events.put(("output", f"\nerror: {exc}\n"))
+                code = 1
+            if code != 0:
+                break
+            self._events.put(("output", "\n"))
+        self._events.put(("done", code))
 
     def _search_worker(self, term: str) -> None:
         results, errors = _search_all(term, self.backends)
@@ -233,6 +342,19 @@ class PkgfindApp:
         if not result:
             return
         backend = self._by_id.get(result.source)
+        if self._mode == "updates":
+            cmd = " ".join(backend.upgrade_cmd(result)) if backend else ""
+            lines = [
+                f"{result.source_label}: {result.ident}",
+                f"{result.version or '?'} → {result.newest or '?'}",
+            ]
+            if cmd:
+                lines.append(f"$ {cmd}")
+            if backend and backend.caveat:
+                lines.append(f"Note: {backend.caveat}")
+            self._detail.configure(text="\n".join(lines))
+            self._action.configure(text="Update", state="normal" if backend else "disabled")
+            return
         cmd = " ".join(backend.install_cmd(result)) if backend else ""
         lines = [f"{result.source_label}: {result.ident}"]
         if result.summary:
@@ -256,7 +378,10 @@ class PkgfindApp:
         backend = self._by_id.get(result.source) if result else None
         if not result or not backend:
             return
-        cmd = backend.remove_cmd(result) if result.installed else backend.install_cmd(result)
+        if self._mode == "updates":
+            cmd = backend.upgrade_cmd(result)
+        else:
+            cmd = backend.remove_cmd(result) if result.installed else backend.install_cmd(result)
         self._busy = True
         self._action.state(["disabled"])
         self._search_btn.state(["disabled"])
@@ -288,6 +413,8 @@ class PkgfindApp:
                 kind = event[0]
                 if kind == "results":
                     self._show_results(event[1], event[2], event[3])
+                elif kind == "updates":
+                    self._show_updates(event[1], event[2])
                 elif kind == "output":
                     self._console_write(event[1])
                 elif kind == "done":
@@ -296,7 +423,10 @@ class PkgfindApp:
                     )
                     self._busy = False
                     self._search_btn.state(["!disabled"])
+                    self._updates_btn.state(["!disabled"])
                     self._action.state(["!disabled"])
+                    if self._mode == "updates" and self._rows:
+                        self._updall_btn.state(["!disabled"])
         except queue.Empty:
             pass
         self.root.after(80, self._pump)
