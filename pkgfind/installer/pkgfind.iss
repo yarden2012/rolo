@@ -3,7 +3,7 @@
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\pkgfind.iss
 
 #define MyAppName "pkgfind"
-#define MyAppVersion "0.5.2"
+#define MyAppVersion "0.6.0"
 #define MyAppPublisher "yarden2012"
 #define MyAppURL "https://github.com/yarden2012/rolo"
 #define MyAppExeName "pkgfind.exe"

@@ -60,6 +60,8 @@ pkgfind inkscape        # open it with the search already run
 pkgfind -c inkscape     # print results in the terminal instead
 pkgfind -c -b ripgrep   # ...including inside distrobox containers
 pkgfind -c -i ripgrep --install ripgrep   # install straight from the CLI
+pkgfind --updates       # list updates for your installed apps
+pkgfind --upgrade-all   # upgrade everything that's out of date
 ```
 
 | Flag | Meaning |
@@ -68,12 +70,19 @@ pkgfind -c -i ripgrep --install ripgrep   # install straight from the CLI
 | `-b`, `--containers` | also search distrobox containers |
 | `-n N`, `--limit N` | show at most N results |
 | `-i ID`, `--install ID` | install that identifier from the results |
+| `-u`, `--updates` | list updates available for installed apps |
+| `--upgrade ID` | upgrade one identifier |
+| `--upgrade-all` | upgrade everything that's out of date |
 | `--no-color` | plain output |
 
 In the app: **Enter** searches, **Ctrl+F** jumps back to the search box, the chips
 filter by source, clicking a row opens details with the exact command (and a copy
 button), and **Install** / **Remove** streams the real command output in a window
 you can cancel.
+
+Hit the **Updates** button in the header (or the CLI flags above) to see
+everything upgradable across every source in one list — current → newest — and
+update a single app or **Update all** in one go.
 
 ## How results are ordered
 
