@@ -1,20 +1,15 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pkgfind — one search box over every package source</title>
 <meta name="description" content="pkgfind searches Flatpak, your distro's repos, Homebrew, containers and the Windows package managers all at once — then installs from the results. Free and open source for Linux, macOS and Windows.">
 <meta name="theme-color" content="#0b0f16" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
-<meta property="og:type" content="website">
-<meta property="og:title" content="pkgfind — every package, one search box">
-<meta property="og:description" content="pkgfind searches Flatpak, your distro's repos, Homebrew, containers and the Windows package managers all at once — then installs from the results. Free and open source for Linux, macOS and Windows.">
-<meta property="og:image" content="https://raw.githubusercontent.com/yarden2012/rolo/main/flathub/screenshot-1.png">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='30' fill='%232a6ee0'/><g fill='none' stroke='%23fff' stroke-width='10' stroke-linecap='round'><circle cx='55' cy='55' r='26'/><path d='M74 74 L100 100'/></g></svg>">
-</head>
-<body>
+<meta property="og:type" content="website"><meta property="og:title" content="pkgfind — every package, one search box">
+<meta property="og:description" content="pkgfind searches Flatpak, your distro's repos, Homebrew, containers and the Windows package managers all at once — then installs from the results. Free and open source for Linux, macOS and Windows."><meta property="og:image" content="https://raw.githubusercontent.com/yarden2012/rolo/main/flathub/screenshot-1.png">
+<meta name="twitter:card" content="summary_large_image"><link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='30' fill='%232a6ee0'/><g fill='none' stroke='%23fff' stroke-width='10' stroke-linecap='round'><circle cx='55' cy='55' r='26'/><path d='M74 74 L100 100'/></g></svg>">
+</head><body>
+<script>document.documentElement.classList.add("js");</script>
 <style>
   :root {
     --bg: #f5f7fb; --bg-2: #eaeff6; --surface: #ffffff; --surface-2: #f1f4f9;
@@ -124,7 +119,8 @@
   @keyframes blink { 50% { opacity: 0; } }
   .demo-count { margin-left: auto; font-family: var(--font-mono); font-size: .78rem; color: var(--faint); white-space: nowrap; }
   .results { list-style: none; margin: 0; padding: 6px; }
-  .result { display: flex; align-items: center; gap: 14px; padding: 11px 12px; border-radius: 10px; opacity: 0; transform: translateY(6px); animation: pop .5s ease forwards; }
+  .result { display: flex; align-items: center; gap: 14px; padding: 11px 12px; border-radius: 10px; }
+  .js .result { opacity: 0; transform: translateY(6px); animation: pop .5s ease forwards; }
   .result:hover { background: var(--surface-2); }
   @keyframes pop { to { opacity: 1; transform: none; } }
   .badge {
@@ -185,12 +181,12 @@
 
   /* download */
   .dl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
-  .dl { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px; height: 100%; }
+  .dl { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px; height: 100%; min-width: 0; }
   .dl-os { display: flex; align-items: center; gap: 10px; }
   .dl-os svg { width: 22px; height: 22px; }
   .dl-os h3 { font-size: 1.06rem; font-weight: 700; }
   .dl-os small { color: var(--faint); font-family: var(--font-mono); font-size: .74rem; display: block; margin-top: 2px; }
-  .cmd { position: relative; font-family: var(--font-mono); font-size: .8rem; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 40px 12px 12px; color: var(--text); overflow-x: auto; white-space: pre; }
+  .cmd { position: relative; min-width: 0; font-family: var(--font-mono); font-size: .8rem; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 40px 12px 12px; color: var(--text); overflow-x: auto; white-space: pre; }
   .cmd .copy { position: absolute; top: 7px; right: 7px; width: 26px; height: 26px; border: 1px solid var(--border); background: var(--surface); border-radius: 7px; cursor: pointer; display: grid; place-items: center; color: var(--muted); }
   .cmd .copy:hover { color: var(--text); border-color: var(--faint); }
   .cmd .copy svg { width: 14px; height: 14px; }
@@ -208,7 +204,8 @@
   .foot-links a:hover { color: var(--text); }
   .foot-fine { margin-top: 16px; font-size: .8rem; color: var(--faint); }
 
-  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal { transition: opacity .6s ease, transform .6s ease; }
+  .js .reveal { opacity: 0; transform: translateY(14px); }
   .reveal.in { opacity: 1; transform: none; }
 
   @media (max-width: 860px) {
@@ -220,8 +217,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
-    .result { opacity: 1; transform: none; }
-    .reveal { opacity: 1; transform: none; }
+    .result, .js .result, .reveal, .js .reveal { opacity: 1 !important; transform: none !important; }
   }
 </style>
 
@@ -473,5 +469,4 @@ brew install yarden2012/rolo/pkgfind<button class="copy" data-copy="brew tap yar
   })();
 </script>
 
-</body>
-</html>
+</body></html>
