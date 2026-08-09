@@ -1,0 +1,5 @@
+node_modules/
+.shot*.png
+.e2e-*
+.dbg-*.png
+.verify-*.png

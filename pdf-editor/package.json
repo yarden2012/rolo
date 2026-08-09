@@ -1,0 +1,16 @@
+{
+  "name": "pdf-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Offline PDF editor (pdf.js + pdf-lib + Electron), PDF Expert-inspired",
+  "scripts": {
+    "app": "electron .",
+    "sample": "node scripts/make-sample.cjs",
+    "web": "./run.sh"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0"
+  }
+}

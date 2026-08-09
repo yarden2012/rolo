@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'">
+<title>PDF Editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%233b82f6'/%3E%3Cpath d='M7 17V7h4a3 3 0 0 1 0 6H7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+</head>
+<body data-tool="select" class="noDoc">
+
+<header id="toolbar">
+  <div class="tbGroup">
+    <button id="btnSidebar" class="tbBtn" title="Toggle sidebar">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+    </button>
+    <div id="brand">PDF<span>Editor</span></div>
+  </div>
+
+  <div class="tbGroup">
+    <button id="btnOpen" class="tbBtn wide" title="Open PDF (Ctrl+O)">
+      <svg viewBox="0 0 24 24"><path d="M6 19h12a2 2 0 0 0 1.9-1.4l1.7-6.2A1.2 1.2 0 0 0 20.4 10H8.6a2 2 0 0 0-1.9 1.4L4.5 17"/><path d="M4.5 17V6.5A1.5 1.5 0 0 1 6 5h4l2 2.5h6.5A1.5 1.5 0 0 1 20 9v1"/></svg>
+      <span>Open</span>
+    </button>
+    <div class="split">
+      <button id="btnSave" class="tbBtn wide needDoc" title="Save edited copy (Ctrl+S)">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15 7.5 10.5"/><path d="M4 20h16"/></svg>
+        <span>Save</span>
+      </button>
+      <button id="btnSaveMenu" class="tbBtn caret needDoc" title="Save options">
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="tbSep"></div>
+
+  <div class="tbGroup seg needDoc" id="toolSeg">
+    <button class="tbBtn" data-tool="select" title="Select / move (V)">
+      <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="highlight" title="Highlight text (H)">
+      <svg viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4l8 8Z"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="underline" title="Underline text (U)">
+      <svg viewBox="0 0 24 24"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><path d="M4 20h16"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="strikeout" title="Strike out text">
+      <svg viewBox="0 0 24 24"><path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><path d="M4 12h16"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="pen" title="Draw (P)">
+      <svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+    </button>
+    <button class="tbBtn" id="btnShapes" title="Shapes">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+      <svg class="mini" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="text" title="Text box (T)">
+      <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+    <button class="tbBtn" data-tool="note" title="Sticky note (N)">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+    </button>
+    <button class="tbBtn" id="btnImage" title="Insert image">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+    </button>
+    <button class="tbBtn" id="btnSign" title="Signature">
+      <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </button>
+  </div>
+
+  <div class="tbSep"></div>
+
+  <div class="tbGroup needDoc" id="ctxControls">
+    <label id="colorWrap" class="ctl" title="Color">
+      <input type="color" id="colorIn" value="#ffd60a">
+    </label>
+    <label id="strokeWrap" class="ctl" title="Stroke width">
+      <input type="range" id="strokeIn" min="1" max="10" step="0.5" value="2">
+    </label>
+    <label id="fontWrap" class="ctl" title="Font size">
+      <input type="number" id="fontIn" min="8" max="96" value="14">
+    </label>
+    <button id="btnUndo" class="tbBtn" title="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+    </button>
+    <button id="btnRedo" class="tbBtn" title="Redo (Ctrl+Shift+Z)">
+      <svg viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>
+    </button>
+  </div>
+
+  <div class="tbSpacer"></div>
+
+  <div class="tbGroup needDoc">
+    <div id="searchWrap">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchIn" type="text" placeholder="Search" spellcheck="false">
+      <span id="hitCount"></span>
+      <button id="btnPrevHit" class="miniBtn" title="Previous match"><svg viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg></button>
+      <button id="btnNextHit" class="miniBtn" title="Next match"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+
+  <div class="tbGroup zoomGroup needDoc">
+    <button id="btnZoomOut" class="tbBtn" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <button id="zoomPct" title="Reset zoom">125%</button>
+    <button id="btnZoomIn" class="tbBtn" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    <button id="btnView" class="tbBtn" title="View options">
+      <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+  </div>
+</header>
+
+<div id="main">
+  <aside id="sidebar" class="needDoc">
+    <div id="sideTabs">
+      <button id="tabPages" class="active">Pages</button>
+      <button id="tabOutline">Outline</button>
+    </div>
+    <div id="thumbList" class="sidePanel"></div>
+    <div id="outlineList" class="sidePanel" hidden></div>
+    <div id="sideFoot">
+      <button id="btnAddPage" class="footBtn" title="Insert blank page after current">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg> Blank page
+      </button>
+      <button id="btnMerge" class="footBtn" title="Append another PDF">
+        <svg viewBox="0 0 24 24"><path d="M6 19h12a2 2 0 0 0 1.9-1.4l1.7-6.2A1.2 1.2 0 0 0 20.4 10H8.6a2 2 0 0 0-1.9 1.4L4.5 17"/><path d="M4.5 17V6.5A1.5 1.5 0 0 1 6 5h4l2 2.5h6.5A1.5 1.5 0 0 1 20 9v1"/></svg> Merge PDF
+      </button>
+    </div>
+  </aside>
+
+  <div id="viewerWrap" data-view="day">
+    <div id="viewer"></div>
+    <div id="emptyState">
+      <div class="dropCard">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+        <h1>Open a PDF to get started</h1>
+        <p>Annotate, sign, fill forms and organize pages — right here, offline.</p>
+        <button id="btnOpenEmpty" class="primaryBtn">Open PDF</button>
+        <div class="dropHintText">…or drop a file anywhere</div>
+        <a id="sampleLink" href="?demo=1">Try the sample document →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer id="statusbar" class="needDoc">
+  <div id="docName"></div>
+  <div id="pageNav">
+    <input id="pageNow" type="number" min="1" value="1"> <span>/ <b id="pageTotal">0</b></span>
+  </div>
+  <div id="toolHint"></div>
+</footer>
+
+<div id="dropOver" hidden><div>Drop PDF to open</div></div>
+
+<div id="notePopup" hidden>
+  <div class="npHead">
+    <span>Note</span>
+    <button id="npDelete" class="miniBtn" title="Delete note"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="m19 6-.8 13.2A2 2 0 0 1 16.2 21H7.8a2 2 0 0 1-2-1.8L5 6"/></svg></button>
+    <button id="npClose" class="miniBtn" title="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <textarea id="npText" placeholder="Type your note…"></textarea>
+</div>
+
+<div id="sigModal" hidden>
+  <div class="modalCard">
+    <div class="mcHead">
+      <h2>Your signature</h2>
+      <button id="sigClose" class="miniBtn"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <div id="sigPad"><canvas id="sigCanvas" width="560" height="220"></canvas></div>
+    <div id="sigSaved"></div>
+    <div class="mcFoot">
+      <button id="sigClear" class="ghostBtn">Clear</button>
+      <div class="mcSpacer"></div>
+      <button id="sigCancel" class="ghostBtn">Cancel</button>
+      <button id="sigUse" class="primaryBtn">Use signature</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="mergeInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="imageInput" accept="image/png,image/jpeg" hidden>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
