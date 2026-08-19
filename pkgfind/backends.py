@@ -88,7 +88,10 @@ def _wrap(cmd: list[str], env: dict[str, str] | None = None) -> list[str]:
 
 
 def run(
-    cmd: list[str], timeout: int = 120, env: dict[str, str] | None = None
+    cmd: list[str],
+    timeout: int = 120,
+    env: dict[str, str] | None = None,
+    stdin_text: str | None = None,
 ) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr). Never raises."""
     child_env = None
@@ -101,6 +104,7 @@ def run(
             text=True,
             timeout=timeout,
             env=child_env,
+            input=stdin_text,
             **_TEXT_KW,
         )
         return proc.returncode, proc.stdout, proc.stderr
@@ -112,13 +116,31 @@ def run(
         return 1, "", str(exc)
 
 
-def popen(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.Popen:
-    """Start a command with stdout+stderr merged, for streaming into the UI."""
+def popen(
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    stdin_text: str | None = None,
+    keep_stdin: bool = False,
+) -> subprocess.Popen:
+    """Start a command with stdout+stderr merged, for streaming into the UI.
+
+    stdin is closed unless asked for: a child that decides to ask a question
+    would otherwise read from whatever terminal happened to launch the app —
+    which the person looking at the GUI cannot see — and sit there forever.
+    With it closed the child fails fast instead. `stdin_text` covers the case
+    where we already have the answer (a password for `sudo -S`), and
+    `keep_stdin` the case where there really is a user at a terminal (the CLI).
+    """
     child_env = None
     if env and not _IN_SANDBOX:
         child_env = {**os.environ, **env}
-    return subprocess.Popen(
+    proc = subprocess.Popen(
         _wrap(cmd, env),
+        stdin=(
+            subprocess.PIPE if stdin_text is not None
+            else None if keep_stdin
+            else subprocess.DEVNULL
+        ),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -126,20 +148,191 @@ def popen(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.Popen
         env=child_env,
         **_TEXT_KW,
     )
+    if stdin_text is not None and proc.stdin is not None:
+        try:
+            proc.stdin.write(stdin_text)
+            proc.stdin.flush()
+        except OSError:  # the child never read it; its exit code tells the story
+            pass
+        finally:
+            proc.stdin.close()
+    return proc
 
 
-_have_cache: dict[str, bool] = {}
+_which_cache: dict[str, str] = {}
+
+
+def which(cmd: str) -> str:
+    """Full path of an executable where the package tools live ("" if absent)."""
+    if cmd not in _which_cache:
+        if _IN_SANDBOX:
+            rc, out, _ = run(["sh", "-c", f"command -v {shlex.quote(cmd)}"], timeout=15)
+            _which_cache[cmd] = out.strip() if rc == 0 else ""
+        else:
+            _which_cache[cmd] = shutil.which(cmd) or ""
+    return _which_cache[cmd]
 
 
 def have(cmd: str) -> bool:
     """Is this executable available where the package tools actually live?"""
-    if cmd not in _have_cache:
-        if _IN_SANDBOX:
-            rc, _, _ = run(["sh", "-c", f"command -v {shlex.quote(cmd)}"], timeout=15)
-            _have_cache[cmd] = rc == 0
-        else:
-            _have_cache[cmd] = shutil.which(cmd) is not None
-    return _have_cache[cmd]
+    return bool(which(cmd))
+
+
+# -- running a command as root ----------------------------------------------
+#
+# Install and remove commands are built with a plain `sudo` in front: that is
+# what a person would type, it is what the CLI runs, and it is what the "copy
+# command" button should hand over. sudo, though, reads the password from a
+# terminal, and a windowed app has none — the child dies immediately with
+# "sudo: no tty present and no askpass program specified", nothing ever asks
+# for a password, and the UI can only report that the install failed.
+#
+# So before the GUI runs one of these it picks a way to authenticate that works
+# without a terminal, and rewrites the command to match.
+#
+# Only a leading `sudo` counts. `distrobox enter … -- sudo dnf …` runs its sudo
+# inside the container, where distrobox has already made it passwordless, and
+# any prompt would have to happen in there too — those are left alone.
+
+ROOT_FREE = "free"        # nothing will be asked: already root, cached, or NOPASSWD
+ROOT_PKEXEC = "pkexec"    # polkit puts up the desktop's own password dialog
+ROOT_ASKPASS = "askpass"  # sudo -A, an askpass helper puts up the dialog
+ROOT_PROMPT = "prompt"    # neither exists — the caller has to ask, and pipe it in
+
+# Askpass helpers live in libexec as often as on PATH, so look for both.
+ASKPASS_CANDIDATES = (
+    "/usr/libexec/openssh/gnome-ssh-askpass",
+    "/usr/lib/openssh/gnome-ssh-askpass",
+    "/usr/lib/ssh/gnome-ssh-askpass",
+    "/usr/libexec/seahorse/ssh-askpass",
+    "ksshaskpass",
+    "lxqt-openssh-askpass",
+    "ssh-askpass",
+    "x11-ssh-askpass",
+)
+
+
+def needs_root(cmd: list[str]) -> bool:
+    """Will this command want a password before it does anything?"""
+    return bool(cmd) and os.path.basename(cmd[0]) == "sudo"
+
+
+def _is_root() -> bool:
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def _executable(path: str) -> bool:
+    if _IN_SANDBOX:
+        rc, _, _ = run(["sh", "-c", f"test -x {shlex.quote(path)}"], timeout=15)
+        return rc == 0
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def askpass_helper() -> str:
+    """A program `sudo -A` can use to ask for the password ("" if none)."""
+    preset = os.environ.get("SUDO_ASKPASS", "")
+    if preset and _executable(preset):
+        return preset
+    for candidate in ASKPASS_CANDIDATES:
+        path = candidate if candidate.startswith("/") else which(candidate)
+        if path and _executable(path):
+            return path
+    return ""
+
+
+def sudo_is_free() -> bool:
+    """True when sudo would run without asking anything (cached or NOPASSWD)."""
+    rc, _, _ = run(["sudo", "-n", "true"], timeout=15)
+    return rc == 0
+
+
+def root_method() -> str:
+    """Pick how to authenticate a root command from a windowed app.
+
+    Cheap but not instant — `sudo -n true` is a real process — so call it off
+    the UI thread.
+    """
+    if _is_root() or sudo_is_free():
+        return ROOT_FREE
+    if which("pkexec"):
+        return ROOT_PKEXEC
+    if askpass_helper():
+        return ROOT_ASKPASS
+    return ROOT_PROMPT
+
+
+def as_root(cmd: list[str], method: str) -> list[str]:
+    """Rewrite a `sudo …` command for the chosen authentication method."""
+    if not needs_root(cmd):
+        return cmd
+    rest = cmd[1:]
+    if method == ROOT_FREE:
+        # -n so that a timestamp which expired since the check fails loudly
+        # instead of blocking on a prompt nobody can see.
+        return rest if _is_root() else ["sudo", "-n", *rest]
+    if method == ROOT_PKEXEC:
+        # pkexec runs with a sanitised PATH, so hand it the resolved program.
+        return ["pkexec", which(rest[0]) or rest[0], *rest[1:]]
+    if method == ROOT_ASKPASS:
+        return ["sudo", "-A", *rest]
+    if method == ROOT_PROMPT:
+        # -p "" because the prompt would go nowhere; the password arrives on stdin.
+        return ["sudo", "-S", "-p", "", *rest]
+    return cmd
+
+
+def root_env(method: str) -> dict[str, str]:
+    """Extra environment the chosen method needs."""
+    if method == ROOT_ASKPASS:
+        return {"SUDO_ASKPASS": askpass_helper()}
+    return {}
+
+
+def wants_password(cmd: list[str]) -> bool:
+    """Is this a rewritten command that expects the password on stdin?"""
+    return cmd[:2] == ["sudo", "-S"]
+
+
+def verify_password(password: str) -> bool:
+    """Check a password before starting the install, so a typo costs nothing.
+
+    A success also warms sudo's timestamp, which is why the commands that
+    follow usually sail through.
+    """
+    rc, _, _ = run(
+        ["sudo", "-S", "-p", "", "true"], timeout=60, stdin_text=password + "\n"
+    )
+    return rc == 0
+
+
+# What sudo and pkexec say when they never got a usable password. An exit code
+# alone cannot be trusted here: sudo passes the package manager's own status
+# through, so a plain "1" is far more often a failed install than a refusal.
+AUTH_FAILURE_SIGNS = (
+    "no tty present",
+    "no askpass program",
+    "a password is required",
+    "a terminal is required",
+    "sorry, try again",
+    "incorrect password attempt",
+    "no password was provided",
+    "request dismissed",
+    "authentication fail",
+    "not authorized",
+    "not authorised",
+)
+
+
+def auth_failed(cmd: list[str], code: int, output: str) -> bool:
+    """Did this fail for want of a password, rather than fail to install?"""
+    if code == 0:
+        return False
+    if cmd[:1] != ["pkexec"] and not needs_root(cmd):
+        return False
+    if cmd[:1] == ["pkexec"] and code == 126:  # pkexec's own "dismissed" status
+        return True
+    lowered = output.lower()
+    return any(sign in lowered for sign in AUTH_FAILURE_SIGNS)
 
 
 RPM_ARCHES = frozenset(

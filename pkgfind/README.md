@@ -114,6 +114,13 @@ picks it up with no changes — give it a badge colour in `BADGE_CLASS` in
   and routes every package command back out through `flatpak-spawn --host`.
 - `rpm-ostree install` triggers a normal polkit password prompt and only takes
   effect after a reboot; the app says so before you commit to it.
+- Sources that install system-wide (dnf, apt, pacman, zypper, apk, snap) need
+  root. The commands are written with a plain `sudo` — that is what the CLI
+  runs and what the copy button hands you — but sudo can only prompt on a
+  terminal, so the GUI swaps it for something that can ask on a desktop:
+  `pkexec` if polkit is there, otherwise `sudo -A` with an askpass helper, and
+  failing both, a password box of pkgfind's own that pipes into `sudo -S`. A
+  cancelled prompt is reported as "not authorised", not as a failed install.
 - A backend that fails or times out shows a toast and the other sources still
   return — one broken source never sinks the search.
 
