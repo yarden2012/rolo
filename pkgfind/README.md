@@ -1,6 +1,6 @@
 # pkgfind
 
-pkgfind is an app that searches every place an app can come from at once. Type
+is an app that searches every place an app can come from at once. Type
 once and get a single ranked list that tells you where each hit lives and
 whether it's already installed — instead of checking a store, then a `search`
 for each package manager, then remembering which container you put a CLI tool
