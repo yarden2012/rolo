@@ -117,10 +117,12 @@ picks it up with no changes — give it a badge colour in `BADGE_CLASS` in
 - Sources that install system-wide (dnf, apt, pacman, zypper, apk, snap) need
   root. The commands are written with a plain `sudo` — that is what the CLI
   runs and what the copy button hands you — but sudo can only prompt on a
-  terminal, so the GUI swaps it for something that can ask on a desktop:
-  `pkexec` if polkit is there, otherwise `sudo -A` with an askpass helper, and
-  failing both, a password box of pkgfind's own that pipes into `sudo -S`. A
-  cancelled prompt is reported as "not authorised", not as a failed install.
+  terminal, so the GUI asks in a box of its own and pipes the answer into
+  `sudo -S`. It is checked before anything runs, so a typo just means typing it
+  again, and it is never stored, logged, or echoed into the command output.
+  Nothing is asked when sudo would not ask anyway: as root, with a warm sudo
+  timestamp, or under NOPASSWD. A cancelled prompt is reported as "not
+  authorised", not as a failed install.
 - A backend that fails or times out shows a toast and the other sources still
   return — one broken source never sinks the search.
 

@@ -187,29 +187,13 @@ def have(cmd: str) -> bool:
 # "sudo: no tty present and no askpass program specified", nothing ever asks
 # for a password, and the UI can only report that the install failed.
 #
-# So before the GUI runs one of these it picks a way to authenticate that works
-# without a terminal, and rewrites the command to match.
+# So the GUI asks for the password itself, in its own box, and hands it to
+# `sudo -S` on stdin. Nothing is asked when sudo would not ask anyway: as root,
+# with a warm timestamp, or under NOPASSWD.
 #
 # Only a leading `sudo` counts. `distrobox enter … -- sudo dnf …` runs its sudo
 # inside the container, where distrobox has already made it passwordless, and
 # any prompt would have to happen in there too — those are left alone.
-
-ROOT_FREE = "free"        # nothing will be asked: already root, cached, or NOPASSWD
-ROOT_PKEXEC = "pkexec"    # polkit puts up the desktop's own password dialog
-ROOT_ASKPASS = "askpass"  # sudo -A, an askpass helper puts up the dialog
-ROOT_PROMPT = "prompt"    # neither exists — the caller has to ask, and pipe it in
-
-# Askpass helpers live in libexec as often as on PATH, so look for both.
-ASKPASS_CANDIDATES = (
-    "/usr/libexec/openssh/gnome-ssh-askpass",
-    "/usr/lib/openssh/gnome-ssh-askpass",
-    "/usr/lib/ssh/gnome-ssh-askpass",
-    "/usr/libexec/seahorse/ssh-askpass",
-    "ksshaskpass",
-    "lxqt-openssh-askpass",
-    "ssh-askpass",
-    "x11-ssh-askpass",
-)
 
 
 def needs_root(cmd: list[str]) -> bool:
@@ -221,71 +205,34 @@ def _is_root() -> bool:
     return hasattr(os, "geteuid") and os.geteuid() == 0
 
 
-def _executable(path: str) -> bool:
-    if _IN_SANDBOX:
-        rc, _, _ = run(["sh", "-c", f"test -x {shlex.quote(path)}"], timeout=15)
-        return rc == 0
-    return os.path.isfile(path) and os.access(path, os.X_OK)
-
-
-def askpass_helper() -> str:
-    """A program `sudo -A` can use to ask for the password ("" if none)."""
-    preset = os.environ.get("SUDO_ASKPASS", "")
-    if preset and _executable(preset):
-        return preset
-    for candidate in ASKPASS_CANDIDATES:
-        path = candidate if candidate.startswith("/") else which(candidate)
-        if path and _executable(path):
-            return path
-    return ""
-
-
 def sudo_is_free() -> bool:
     """True when sudo would run without asking anything (cached or NOPASSWD)."""
     rc, _, _ = run(["sudo", "-n", "true"], timeout=15)
     return rc == 0
 
 
-def root_method() -> str:
-    """Pick how to authenticate a root command from a windowed app.
+def needs_password() -> bool:
+    """Does a root command actually mean typing a password right now?
 
     Cheap but not instant — `sudo -n true` is a real process — so call it off
     the UI thread.
     """
-    if _is_root() or sudo_is_free():
-        return ROOT_FREE
-    if which("pkexec"):
-        return ROOT_PKEXEC
-    if askpass_helper():
-        return ROOT_ASKPASS
-    return ROOT_PROMPT
+    return not _is_root() and not sudo_is_free()
 
 
-def as_root(cmd: list[str], method: str) -> list[str]:
-    """Rewrite a `sudo …` command for the chosen authentication method."""
+def as_root(cmd: list[str], with_password: bool) -> list[str]:
+    """Rewrite a `sudo …` command so it can run without a terminal."""
     if not needs_root(cmd):
         return cmd
     rest = cmd[1:]
-    if method == ROOT_FREE:
-        # -n so that a timestamp which expired since the check fails loudly
-        # instead of blocking on a prompt nobody can see.
-        return rest if _is_root() else ["sudo", "-n", *rest]
-    if method == ROOT_PKEXEC:
-        # pkexec runs with a sanitised PATH, so hand it the resolved program.
-        return ["pkexec", which(rest[0]) or rest[0], *rest[1:]]
-    if method == ROOT_ASKPASS:
-        return ["sudo", "-A", *rest]
-    if method == ROOT_PROMPT:
+    if _is_root():
+        return rest
+    if with_password:
         # -p "" because the prompt would go nowhere; the password arrives on stdin.
         return ["sudo", "-S", "-p", "", *rest]
-    return cmd
-
-
-def root_env(method: str) -> dict[str, str]:
-    """Extra environment the chosen method needs."""
-    if method == ROOT_ASKPASS:
-        return {"SUDO_ASKPASS": askpass_helper()}
-    return {}
+    # -n so that a timestamp which expired since the check fails loudly instead
+    # of blocking on a prompt nobody can see.
+    return ["sudo", "-n", *rest]
 
 
 def wants_password(cmd: list[str]) -> bool:
@@ -305,9 +252,9 @@ def verify_password(password: str) -> bool:
     return rc == 0
 
 
-# What sudo and pkexec say when they never got a usable password. An exit code
-# alone cannot be trusted here: sudo passes the package manager's own status
-# through, so a plain "1" is far more often a failed install than a refusal.
+# What sudo says when it never got a usable password. An exit code alone cannot
+# be trusted here: sudo passes the package manager's own status through, so a
+# plain "1" is far more often a failed install than a refusal.
 AUTH_FAILURE_SIGNS = (
     "no tty present",
     "no askpass program",
@@ -316,21 +263,14 @@ AUTH_FAILURE_SIGNS = (
     "sorry, try again",
     "incorrect password attempt",
     "no password was provided",
-    "request dismissed",
     "authentication fail",
-    "not authorized",
-    "not authorised",
 )
 
 
 def auth_failed(cmd: list[str], code: int, output: str) -> bool:
     """Did this fail for want of a password, rather than fail to install?"""
-    if code == 0:
+    if code == 0 or not needs_root(cmd):
         return False
-    if cmd[:1] != ["pkexec"] and not needs_root(cmd):
-        return False
-    if cmd[:1] == ["pkexec"] and code == 126:  # pkexec's own "dismissed" status
-        return True
     lowered = output.lower()
     return any(sign in lowered for sign in AUTH_FAILURE_SIGNS)
 

@@ -193,16 +193,14 @@ class CommandDialog(Adw.Dialog):
 
 
 class PasswordDialog(Adw.AlertDialog):
-    """Last-resort password prompt, for desktops with no polkit and no askpass.
+    """Asks for the password that a system-wide install needs.
 
-    Everything else goes through the system's own dialog; this one exists so a
-    bare window manager still gets *a* prompt rather than a silent failure. The
-    password is handed straight to sudo on stdin and never stored or logged.
+    What you type goes straight to sudo on stdin for that one run: it is never
+    written down, logged, or shown in the command output.
     """
 
     def __init__(self, what: str, error: str = ""):
-        body = f"{what} has to run as root, and this system has no password "
-        body += "dialog of its own. pkgfind will pass what you type to sudo."
+        body = f"{what} installs system-wide, so it needs your password."
         if error:
             body = f"{error}\n\n{body}"
         super().__init__(heading="Administrator password", body=body)
@@ -693,28 +691,27 @@ class PkgfindWindow(Adw.ApplicationWindow):
         """Show the console dialog for a set of commands, root access included.
 
         A command that starts with `sudo` cannot prompt from here — there is no
-        terminal for it to prompt on — so it gets rewritten first to whatever
-        this machine can actually ask with, and the password prompt appears
-        before anything runs.
+        terminal for it to prompt on — so the password is collected in a box of
+        our own before anything runs, and piped in. Commands that need no
+        password, and machines where sudo would not ask anyway, skip all this.
         """
         if not any(be.needs_root(cmd) for cmd, _ in steps):
-            self._start_steps(title, steps, caveat, on_finished, be.ROOT_FREE, "")
+            self._start_steps(title, steps, caveat, on_finished, "")
             return
 
         def resolve() -> None:  # sudo -n is a real process; keep it off the UI thread
-            method = be.root_method()
-            GLib.idle_add(proceed, method)
+            GLib.idle_add(proceed, be.needs_password())
 
-        def proceed(method: str) -> bool:
-            if method == be.ROOT_PROMPT:
+        def proceed(wanted: bool) -> bool:
+            if wanted:
                 self._ask_password(
                     title,
                     lambda password: self._start_steps(
-                        title, steps, caveat, on_finished, method, password
+                        title, steps, caveat, on_finished, password
                     ),
                 )
             else:
-                self._start_steps(title, steps, caveat, on_finished, method, "")
+                self._start_steps(title, steps, caveat, on_finished, "")
             return False
 
         threading.Thread(target=resolve, daemon=True).start()
@@ -749,18 +746,10 @@ class PkgfindWindow(Adw.ApplicationWindow):
         steps: list[tuple[list[str], dict[str, str]]],
         caveat: str,
         on_finished,
-        method: str,
         password: str,
     ) -> None:
-        extra = be.root_env(method)
-        prepared = [
-            (be.as_root(cmd, method), {**env, **extra} if be.needs_root(cmd) else env)
-            for cmd, env in steps
-        ]
-        notes = [caveat] if caveat else []
-        if method in (be.ROOT_PKEXEC, be.ROOT_ASKPASS):
-            notes.append("your desktop will ask for your password first")
-        dialog = CommandDialog(title, prepared, " — ".join(notes), password)
+        prepared = [(be.as_root(cmd, bool(password)), env) for cmd, env in steps]
+        dialog = CommandDialog(title, prepared, caveat, password)
         if on_finished:
             dialog.on_finished = on_finished
         dialog.present(self)
