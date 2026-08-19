@@ -1,9 +1,10 @@
 # pkgfind
 
-One search box over every place an app can come from. Type once and get a
-single ranked list that tells you where each hit lives and whether it's already
-installed — instead of checking a store, then a `search` for each package
-manager, then remembering which container you put a CLI tool in.
+pkgfind is an app that searches every place an app can come from at once. Type
+once and get a single ranked list that tells you where each hit lives and
+whether it's already installed — instead of checking a store, then a `search`
+for each package manager, then remembering which container you put a CLI tool
+in.
 
 Built first for Bazzite and the atomic Fedora spins (Silverblue, Kinoite,
 Bluefin), it now runs on ordinary Linux distros, macOS and Windows too. Every
@@ -37,8 +38,6 @@ the menu (or `-b` on the command line) when you want it.
 
 ## Install
 
-## Install
-
 On **Linux**, the quickest path is the local installer:
 
 ```sh
@@ -52,7 +51,7 @@ also a Flatpak (`flatpak/`) and a Homebrew formula — see the sections below.
 On **macOS** use Homebrew (see [macOS](#macos)). On **Windows** see
 [Windows](#windows).
 
-## Use
+## Use in CLI
 
 ```sh
 pkgfind                 # open the app
