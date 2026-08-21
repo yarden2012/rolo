@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "pack_format": 69,
+    "supported_formats": { "min_inclusive": 46, "max_inclusive": 9999 },
+    "min_format": [46, 0],
+    "max_format": [9999, 9999],
+    "description": "Rolo PvP Pack \u00a77for 1.21.11"
+  }
+}
