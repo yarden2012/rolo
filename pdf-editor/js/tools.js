@@ -1,18 +1,49 @@
 // Annotation tools: SVG overlay + DOM edit layer, pointer interactions,
 // text markup from selection, text boxes, notes, images, signatures, undo/redo.
 
-import { S, uid, pushUndo, curColor, colorKey, clamp } from './state.js';
+import { S, uid, pushUndo, curColor, colorKey, clamp, fontCss, RTL_RE, flipBidi, rtlLooksVisual } from './state.js';
 import { toast } from './ui.js';
 import { views, refreshPage, els } from './viewer.js';
 
 let drag = null; // active pointer interaction
+// A text box whose editing was interrupted by the user reaching for the style
+// controls. It is kept alive (even while empty) so size/colour can be chosen
+// before typing, and editing resumes once the control is committed.
+let parkedEdit = null;
+
+function dropParked() {
+  const id = parkedEdit;
+  parkedEdit = null;
+  if (!id) return;
+  const a = findAnn(id);
+  if (a && a.type === 'text' && !String(a.text || '').trim()) {
+    if (a._fresh) rawRemove(a.id);
+    else removeAnn(a.id);
+  }
+}
+
+export function resumeTextEdit() {
+  const id = parkedEdit;
+  parkedEdit = null;
+  if (!id) return;
+  const a = findAnn(id);
+  if (!a || a.type !== 'text') return;
+  const v = views.get(a.pageId);
+  const div = v && v.edit.querySelector(`.annText[data-ann="${a.id}"]`);
+  if (div) startTextEdit(a, div);
+}
 
 // ---------- tool switching ----------
 export function setTool(tool) {
   if (S.tool === tool) return;
+  const prev = S.tool;
   if (S.tool === 'place' && tool !== 'place') S.pending = null;
   S.tool = tool;
   document.body.dataset.tool = tool;
+  syncTextCtx();
+  dropParked();
+  if (tool === 'moveimg') primeImages();
+  else if (prev === 'moveimg') for (const v of views.values()) refreshPage(v.entry.id);
   document.dispatchEvent(new CustomEvent('toolchange', { detail: tool }));
 }
 
@@ -54,6 +85,8 @@ export function select(id) {
   if (prev) refreshPage(prev.pageId);
   const cur = id ? findAnn(id) : null;
   if (cur) refreshPage(cur.pageId);
+  syncTextCtx();
+  document.dispatchEvent(new CustomEvent('annselect', { detail: id }));
 }
 
 export function addAnn(a, withUndo = true) {
@@ -118,9 +151,25 @@ export function recolorSelected(color) {
   refreshPage(a.pageId);
 }
 
-export function restyleSelectedFont(size) {
+// Restyle the selected text box (font size and/or family), undoably.
+export function restyleSelected(props) {
   const a = S.selected && findAnn(S.selected);
-  if (a?.type === 'text') { a.fontSize = size; refreshPage(a.pageId); }
+  if (a?.type !== 'text') return;
+  const before = {}, after = {};
+  let changed = false;
+  for (const [k, val] of Object.entries(props)) {
+    if (a[k] === val) continue;
+    before[k] = a[k];
+    after[k] = val;
+    a[k] = val;
+    changed = true;
+  }
+  if (!changed) return;
+  pushUndo({
+    undo: () => { Object.assign(a, before); refreshPage(a.pageId); },
+    redo: () => { Object.assign(a, after); refreshPage(a.pageId); },
+  });
+  refreshPage(a.pageId);
 }
 
 // ---------- SVG overlay rendering ----------
@@ -142,11 +191,23 @@ export function renderOverlay(v) {
     if (a.pageId !== v.entry.id) continue;
     drawAnnSvg(svg, vp, a);
   }
+  if (S.tool === 'moveimg') drawImageHints(v);
   drawSelectionBox(v);
 }
 
 function drawAnnSvg(svg, vp, a) {
   const sw = (a.strokeW || 2) * vp.scale;
+  // mask over the document content this annotation replaces or lifts
+  if (a.cover) {
+    const c = a.cover;
+    const d = dispRect(vp, c.x, c.y, c.x + c.w, c.y + c.h);
+    svg.appendChild(mkEl('rect', {
+      x: d.x, y: d.y, width: d.w, height: d.h,
+      fill: c.color || '#ffffff', 'data-ann': a.id, class: 'annCover',
+    }));
+  }
+  // text, notes and images are drawn by the DOM edit layer
+  if (a.type === 'text' || a.type === 'note' || a.type === 'image') return;
   if (a.type === 'highlight' || a.type === 'underline' || a.type === 'strikeout') {
     const g = mkEl('g', { 'data-ann': a.id });
     for (const r of a.rects) {
@@ -227,15 +288,49 @@ function drawSelectionBox(v) {
 }
 
 // ---------- DOM edit layer (text, notes, images) ----------
+// Elements are reused across renders and keyed by annotation id. Rebuilding the
+// layer from scratch used to swap the DOM node under the user mid-interaction,
+// which broke double-click-to-edit and threw away in-progress typing.
+// Removing a focused box fires blur synchronously, which commits the edit and
+// calls straight back in here — mutating the layer while the previous pass is
+// still walking it. Serialise like viewer.js does for page rendering: a nested
+// call is remembered and replayed once the outer pass finishes.
+const editBusy = new WeakSet();
+const editAgain = new WeakSet();
+
 export function renderEditLayer(v) {
-  v.edit.replaceChildren();
+  if (editBusy.has(v)) { editAgain.add(v); return; }
+  editBusy.add(v);
+  try {
+    renderEditLayerNow(v);
+  } finally {
+    editBusy.delete(v);
+  }
+  if (editAgain.has(v)) {
+    editAgain.delete(v);
+    renderEditLayer(v);
+  }
+}
+
+function renderEditLayerNow(v) {
   const vp = v.viewport;
+  const live = new Set();
   for (const a of S.annots) {
     if (a.pageId !== v.entry.id) continue;
-    if (a.type === 'text') addTextDiv(v, vp, a);
-    else if (a.type === 'note') addNoteIcon(v, vp, a);
-    else if (a.type === 'image') addImageEl(v, vp, a);
+    live.add(a.id);
+    if (a.type === 'text') syncTextDiv(v, vp, a);
+    else if (a.type === 'note') syncNoteIcon(v, vp, a);
+    else if (a.type === 'image') syncImageEl(v, vp, a);
   }
+  // Drop anything whose annotation is gone (image handle holders carry no id).
+  // Removing a focused box fires blur synchronously, which commits the edit and
+  // can re-enter this function, so re-check each node is still attached here.
+  for (const el of [...v.edit.children]) {
+    if (el.parentNode !== v.edit) continue;
+    if (!el.dataset.ann || !live.has(el.dataset.ann)) el.remove();
+  }
+  const sel = S.selected && findAnn(S.selected);
+  if (sel && sel.pageId === v.entry.id && sel.type === 'image') addImageHandle(v, vp, sel);
 }
 
 function place(el, d) {
@@ -252,47 +347,109 @@ function addHandle(host, annId) {
   host.appendChild(h);
 }
 
-function addTextDiv(v, vp, a) {
+function syncTextDiv(v, vp, a) {
   const b = a.box;
   const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
-  const div = document.createElement('div');
-  div.className = 'annText' + (S.selected === a.id ? ' selected' : '');
-  div.dataset.ann = a.id;
-  div.textContent = a.text || '';
+  let div = v.edit.querySelector(`.annText[data-ann="${a.id}"]`);
+  if (!div) {
+    div = document.createElement('div');
+    div.className = 'annText';
+    div.dataset.ann = a.id;
+    div.addEventListener('dblclick', (ev) => {
+      ev.stopPropagation();
+      startTextEdit(a, div, { x: ev.clientX, y: ev.clientY });
+    });
+    v.edit.appendChild(div);
+  }
+  const editing = div.classList.contains('editing');
+  div.classList.toggle('selected', S.selected === a.id);
   div.style.cssText = `left:${d.x}px;top:${d.y}px;width:${d.w}px;min-height:${d.h}px;` +
-    `font-size:${a.fontSize * vp.scale}px;color:${a.color};`;
-  div.addEventListener('dblclick', (ev) => { ev.stopPropagation(); startTextEdit(a, div); });
-  if (S.selected === a.id) addHandle(div, a.id);
-  v.edit.appendChild(div);
+    `font-size:${a.fontSize * vp.scale}px;color:${a.color};font-family:${fontCss(a.fontFamily)};` +
+    (a.rtl ? 'direction:rtl;text-align:right;' : '');
+  // never clobber what the user is currently typing
+  if (!editing && div.textContent !== (a.text || '')) setDivText(div, a.text || '');
+  const handle = div.querySelector('.rzHandleDom');
+  if (S.selected === a.id && !editing && !handle) addHandle(div, a.id);
+  else if (handle && (S.selected !== a.id || editing)) handle.remove();
 }
 
-export function startTextEdit(a, div) {
+// the resize handle lives inside the box so it tracks the rendered height
+function setDivText(div, text) {
+  const handle = div.querySelector('.rzHandleDom');
+  div.textContent = text;
+  if (handle) div.appendChild(handle);
+}
+
+export function startTextEdit(a, div, caretPt) {
+  if (!div || div.classList.contains('editing')) return;
+  div.querySelector('.rzHandleDom')?.remove();
   div.contentEditable = 'true';
   div.classList.add('editing');
   div.focus();
   setTimeout(() => div.focus(), 0); // win any focus tug-of-war from the placing click
-  const range = document.createRange();
-  range.selectNodeContents(div);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
+  placeCaret(div, caretPt);
+  syncTextCtx();
+
   const before = a.text;
-  const done = () => {
+  const beforeRtl = !!a.rtl;
+  // mirror keystrokes into the annotation so a re-render can never lose them
+  const onInput = () => {
+    a.text = div.textContent;
+    // a box typed straight into needs its direction too, or Hebrew exports reversed
+    a.rtl = RTL_RE.test(a.text);
+  };
+  const onKeyDown = (ev) => {
+    if (ev.key === 'Escape') { ev.preventDefault(); div.blur(); }
+    ev.stopPropagation();
+  };
+  const done = (ev) => {
+    // Reaching for the style controls is not "done typing": park the box so it
+    // survives (even empty) and can be resumed once the control is committed.
+    const parking = !!(ev && ev.relatedTarget && ev.relatedTarget.closest &&
+      ev.relatedTarget.closest('#ctxControls'));
     div.removeEventListener('blur', done);
+    div.removeEventListener('input', onInput);
+    div.removeEventListener('keydown', onKeyDown);
     div.contentEditable = 'false';
     div.classList.remove('editing');
+    if (parking) parkedEdit = a.id;
     const t = div.textContent.trim();
-    if (!t) { rawRemove(a.id); return; }
+    if (!t) {
+      // a box emptied after it was already committed is a deletion, and has to be
+      // undoable; a never-committed one just goes away
+      if (!parking) {
+        if (a._fresh) {
+          rawRemove(a.id);
+        } else {
+          // put back what was there before recording the deletion, or undo would
+          // restore an empty box (onInput has already blanked a.text by now)
+          a.text = before;
+          a.rtl = beforeRtl;
+          removeAnn(a.id);
+        }
+      }
+      syncTextCtx();
+      return;
+    }
+    if (!parking && a._fresh && a.cover && div.textContent === a._orig) {
+      // Replacing document text with exactly the same string changes nothing.
+      // Skipped while parking: an E-tool box still holds the original line until
+      // the user types, and discarding it here would destroy the pending edit.
+      rawRemove(a.id);
+      syncTextCtx();
+      return;
+    }
     a.text = div.textContent;
+    a.rtl = RTL_RE.test(a.text);
     if (before !== a.text) {
       if (a._fresh) {
         delete a._fresh;
         pushUndo({ undo: () => rawRemove(a.id), redo: () => { S.annots.push(a); refreshPage(a.pageId); } });
       } else {
-        const after = a.text;
+        const after = a.text, afterRtl = !!a.rtl;
         pushUndo({
-          undo: () => { a.text = before; refreshPage(a.pageId); },
-          redo: () => { a.text = after; refreshPage(a.pageId); },
+          undo: () => { a.text = before; a.rtl = beforeRtl; refreshPage(a.pageId); },
+          redo: () => { a.text = after; a.rtl = afterRtl; refreshPage(a.pageId); },
         });
       }
     } else if (a._fresh) {
@@ -300,43 +457,88 @@ export function startTextEdit(a, div) {
       pushUndo({ undo: () => rawRemove(a.id), redo: () => { S.annots.push(a); refreshPage(a.pageId); } });
     }
     refreshPage(a.pageId);
+    syncTextCtx();
   };
+  div.addEventListener('input', onInput);
   div.addEventListener('blur', done);
-  div.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') { ev.preventDefault(); div.blur(); }
-    ev.stopPropagation();
-  });
+  div.addEventListener('keydown', onKeyDown);
 }
 
-function addNoteIcon(v, vp, a) {
-  const b = a.box;
-  const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
-  const div = document.createElement('div');
-  div.className = 'annNote' + (S.selected === a.id ? ' selected' : '');
-  div.dataset.ann = a.id;
-  div.title = a.text || 'Note';
-  place(div, d);
-  div.innerHTML = `<svg viewBox="0 0 24 24" style="fill:${a.color};stroke:rgba(0,0,0,.35);stroke-width:1">` +
-    `<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>`;
-  v.edit.appendChild(div);
-}
-
-function addImageEl(v, vp, a) {
-  const b = a.box;
-  const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
-  const img = document.createElement('img');
-  img.className = 'annImage' + (S.selected === a.id ? ' selected' : '');
-  img.dataset.ann = a.id;
-  img.src = a.dataUrl;
-  img.draggable = false;
-  place(img, d);
-  v.edit.appendChild(img);
-  if (S.selected === a.id) {
-    const holder = document.createElement('div');
-    holder.style.cssText = `position:absolute;left:${d.x}px;top:${d.y}px;width:${d.w}px;height:${d.h}px;pointer-events:none;`;
-    addHandle(holder, a.id);
-    v.edit.appendChild(holder);
+// Caret goes where the user clicked. Selecting the whole box on entry (the old
+// behaviour) meant the first keystroke wiped existing text.
+function placeCaret(div, pt) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  let range = null;
+  if (pt) {
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(pt.x, pt.y);
+    } else if (document.caretPositionFromPoint) {
+      const cp = document.caretPositionFromPoint(pt.x, pt.y);
+      if (cp) { range = document.createRange(); range.setStart(cp.offsetNode, cp.offset); }
+    }
+    if (range && !div.contains(range.startContainer)) range = null;
   }
+  if (range) {
+    range.collapse(true);
+  } else {
+    range = document.createRange();
+    range.selectNodeContents(div);
+    range.collapse(false); // caret at the end
+  }
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// Keep the font controls visible whenever text is the active context.
+export function syncTextCtx() {
+  const a = S.selected && findAnn(S.selected);
+  const on = S.tool === 'text' || S.tool === 'edittext' || a?.type === 'text' ||
+    !!document.querySelector('.annText.editing');
+  document.body.classList.toggle('textCtx', on);
+}
+
+function syncNoteIcon(v, vp, a) {
+  const b = a.box;
+  const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
+  let div = v.edit.querySelector(`.annNote[data-ann="${a.id}"]`);
+  if (!div) {
+    div = document.createElement('div');
+    div.className = 'annNote';
+    div.dataset.ann = a.id;
+    div.innerHTML = '<svg viewBox="0 0 24 24">' +
+      '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>';
+    v.edit.appendChild(div);
+  }
+  div.classList.toggle('selected', S.selected === a.id);
+  div.title = a.text || 'Note';
+  div.querySelector('svg').setAttribute('style', `fill:${a.color};stroke:rgba(0,0,0,.35);stroke-width:1`);
+  place(div, d);
+}
+
+function syncImageEl(v, vp, a) {
+  const b = a.box;
+  const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
+  let img = v.edit.querySelector(`.annImage[data-ann="${a.id}"]`);
+  if (!img) {
+    img = document.createElement('img');
+    img.className = 'annImage';
+    img.dataset.ann = a.id;
+    img.draggable = false;
+    v.edit.appendChild(img);
+  }
+  if (img.getAttribute('src') !== a.dataUrl) img.src = a.dataUrl;
+  img.classList.toggle('selected', S.selected === a.id);
+  place(img, d);
+}
+
+function addImageHandle(v, vp, a) {
+  const b = a.box;
+  const d = dispRect(vp, b.x, b.y, b.x + b.w, b.y + b.h);
+  const holder = document.createElement('div');
+  holder.style.cssText = `position:absolute;left:${d.x}px;top:${d.y}px;width:${d.w}px;height:${d.h}px;pointer-events:none;`;
+  addHandle(holder, a.id);
+  v.edit.appendChild(holder);
 }
 
 // ---------- note popup ----------
@@ -380,13 +582,360 @@ export function closeNotePopup() {
   noteState = null;
 }
 
+// ---------- editing the document's own text ----------
+// The original glyphs live in the page content stream and are drawn with
+// subsetted embedded fonts, so they cannot be re-encoded reliably (typing a
+// character the subset lacks would fail). Instead we mask the run with the page
+// background colour and put an ordinary editable text box on top of it.
+
+const rgbToHex = (s) => '#' + s.split(',').map(x => (+x).toString(16).padStart(2, '0')).join('');
+
+function pdfBox(vp, d) {
+  const p1 = vp.convertToPdfPoint(d.x, d.y);
+  const p2 = vp.convertToPdfPoint(d.x + d.w, d.y + d.h);
+  return {
+    x: Math.min(p1[0], p2[0]), y: Math.min(p1[1], p2[1]),
+    w: Math.abs(p2[0] - p1[0]), h: Math.abs(p2[1] - p1[1]),
+  };
+}
+
+function canvasSampler(v) {
+  const c = v.canvas;
+  const dpr = c.width / (parseFloat(c.style.width) || c.width || 1);
+  return { c, dpr, ctx: c.getContext('2d', { willReadFrequently: true }) };
+}
+
+// most common colour in the thin bands just above and below the run
+function sampleBg(v, d) {
+  try {
+    const { c, dpr, ctx } = canvasSampler(v);
+    const pad = Math.max(2, d.h * 0.35);
+    const counts = new Map();
+    for (const yy of [d.y - pad, d.y + d.h + pad]) {
+      const py = Math.round(yy * dpr);
+      if (py < 0 || py >= c.height) continue;
+      const x0 = Math.max(0, Math.round(d.x * dpr));
+      const w = Math.min(c.width - x0, Math.round(d.w * dpr));
+      if (w <= 0) continue;
+      const row = ctx.getImageData(x0, py, w, 1).data;
+      for (let i = 0; i < w; i++) {
+        const k = `${row[i * 4]},${row[i * 4 + 1]},${row[i * 4 + 2]}`;
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    }
+    let best = null, n = 0;
+    for (const [k, cnt] of counts) if (cnt > n) { n = cnt; best = k; }
+    return best ? rgbToHex(best) : '#ffffff';
+  } catch { return '#ffffff'; }
+}
+
+const hexTriplet = (hex) => {
+  const h = (hex || '#000000').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+// The glyph colour: the commonest colour inside the run that is clearly not the
+// background. Picking the *darkest* pixel instead would return the background
+// for light-on-dark text (e.g. white on a coloured banner).
+function sampleInk(v, d, bgHex) {
+  try {
+    const { c, dpr, ctx } = canvasSampler(v);
+    const x0 = Math.max(0, Math.round(d.x * dpr));
+    const y0 = Math.max(0, Math.round(d.y * dpr));
+    const w = Math.min(c.width - x0, Math.round(d.w * dpr));
+    const h = Math.min(c.height - y0, Math.round(d.h * dpr));
+    if (w <= 0 || h <= 0) return S.colors.text;
+    const bg = hexTriplet(bgHex);
+    const px = ctx.getImageData(x0, y0, w, h).data;
+    const counts = new Map();
+    for (let i = 0; i < px.length; i += 4) {
+      const dr = px[i] - bg[0], dg = px[i + 1] - bg[1], db = px[i + 2] - bg[2];
+      if (dr * dr + dg * dg + db * db < 3000) continue; // effectively background
+      const k = `${px[i]},${px[i + 1]},${px[i + 2]}`;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    let best = null, n = 0;
+    for (const [k, cnt] of counts) if (cnt > n) { n = cnt; best = k; }
+    return best ? rgbToHex(best) : S.colors.text;
+  } catch { return S.colors.text; }
+}
+
+// how much of `a`'s width is covered by the union of `others` on the same line
+function coveredFrac(a, others) {
+  const segs = [];
+  for (const b of others) {
+    if (Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) <= a.height * 0.3) continue;
+    const l = Math.max(a.left, b.left), r = Math.min(a.right, b.right);
+    if (r > l) segs.push([l, r]);
+  }
+  if (!segs.length) return 0;
+  segs.sort((x, y) => x[0] - y[0]);
+  let total = 0, curL = segs[0][0], curR = segs[0][1];
+  for (const [l, r] of segs.slice(1)) {
+    if (l > curR) { total += curR - curL; curL = l; curR = r; }
+    else curR = Math.max(curR, r);
+  }
+  return (total + curR - curL) / Math.max(1, a.width);
+}
+
+// every run sitting on the same baseline as `span`, contiguous with it
+function lineSpans(span) {
+  const layer = span.closest('.textLayer');
+  if (!layer) return [span];
+  const all = [...layer.querySelectorAll('span')];
+  const r0 = span.getBoundingClientRect();
+  const mid0 = r0.top + r0.height / 2;
+  let row = all
+    .map((s, i) => ({ s, i, r: s.getBoundingClientRect() }))
+    .filter(o => o.s.textContent && o.r.height > 0 &&
+      Math.abs((o.r.top + o.r.height / 2) - mid0) <= Math.max(3, r0.height * 0.5));
+  // Text this tool has already replaced is still in the file, just painted over,
+  // so a run sitting underneath a later-drawn one is invisible: drop it, or
+  // re-editing a replaced line would pick up both copies.
+  // Runs on one baseline normally sit side by side, so a run that a later-drawn
+  // run overlaps is almost certainly hidden beneath it.
+  row = row.filter((o, k) => o.s === span ||
+    coveredFrac(o.r, row.filter((p, j) => j !== k && p.i > o.i).map(p => p.r)) <= 0.25);
+  row.sort((a, b) => a.r.left - b.r.left);
+  const i = row.findIndex(o => o.s === span);
+  if (i < 0) return [span];
+  const gap = Math.max(6, r0.height * 1.4);
+  const group = [row[i]];
+  for (let k = i - 1; k >= 0; k--) {
+    if (group[0].r.left - row[k].r.right > gap) break;
+    group.unshift(row[k]);
+  }
+  for (let k = i + 1; k < row.length; k++) {
+    if (row[k].r.left - group[group.length - 1].r.right > gap) break;
+    group.push(row[k]);
+  }
+  // return in DOM order: that is the order pdf.js emitted the runs, i.e. the
+  // logical order, which is what an RTL string needs (visual order would reverse it)
+  const set = new Set(group.map(o => o.s));
+  return all.filter(s => set.has(s));
+}
+
+function editExistingText(v, ev) {
+  const span = ev.target.closest?.('.textLayer span');
+  if (!span || !span.textContent.trim()) return false;
+  const spans = lineSpans(span);
+  const wr = v.wrap.getBoundingClientRect();
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const s of spans) {
+    const r = s.getBoundingClientRect();
+    left = Math.min(left, r.left);
+    top = Math.min(top, r.top);
+    right = Math.max(right, r.right);
+    bottom = Math.max(bottom, r.bottom);
+  }
+  const d = { x: left - wr.left, y: top - wr.top, w: right - left, h: bottom - top };
+  if (!(d.w > 0) || !(d.h > 0)) return false;
+
+  let text = spans.map(s => s.textContent).join('');
+  const rtl = RTL_RE.test(text);
+  // pdf.js returns glyphs in content-stream order; if this page was produced in
+  // visual order, flip the run back to logical so it reads correctly while editing
+  if (rtl && rtlLooksVisual(v.entry._text || text)) text = flipBidi(text);
+  const pad = Math.max(1, d.h * 0.15);
+  const padded = { x: d.x - pad, y: d.y - pad, w: d.w + pad * 2, h: d.h + pad * 2 };
+  const fs = (parseFloat(getComputedStyle(span).fontSize) || d.h) / v.viewport.scale;
+  const bg = sampleBg(v, d);
+  const a = {
+    id: uid(), pageId: v.entry.id, type: 'text',
+    box: pdfBox(v.viewport, padded),
+    cover: { ...pdfBox(v.viewport, padded), color: bg },
+    text,
+    fontSize: Math.max(4, fs),
+    fontFamily: S.fontFamily,
+    color: sampleInk(v, d, bg),
+    rtl,
+    _fresh: true,
+    _orig: text,
+  };
+  S.annots.push(a);
+  refreshPage(a.pageId);
+  select(a.id);
+  setTool('select');
+  startTextEdit(a, v.edit.querySelector(`.annText[data-ann="${a.id}"]`), { x: ev.clientX, y: ev.clientY });
+  return true;
+}
+
+// ---------- moving images that are already in the document ----------
+// Same idea as editing existing text: mask the original spot and hand the
+// content to the ordinary annotation machinery, which already does move,
+// resize, undo and export.
+let OPS_NAME = null;
+function opName(fn) {
+  if (!OPS_NAME) {
+    OPS_NAME = {};
+    for (const [k, val] of Object.entries(globalThis.pdfjsLib?.OPS || {})) OPS_NAME[val] = k;
+  }
+  return OPS_NAME[fn];
+}
+
+const matMul = (a, b) => [
+  a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+  a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+  a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+];
+
+// bbox of the unit square under matrix m, in PDF user space
+function unitBox(m) {
+  const pt = (x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  const c = [pt(0, 0), pt(1, 0), pt(0, 1), pt(1, 1)];
+  const xs = c.map(p => p[0]), ys = c.map(p => p[1]);
+  return {
+    x: Math.min(...xs), y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+// Every image painted on the page plus the matrix that places it: an image
+// XObject fills the unit square, so the matrix carries position, size and flips.
+export function pageImages(entry) {
+  // cache the promise, not a placeholder: a caller arriving mid-scan used to get
+  // the empty array and conclude the page had no images
+  if (!entry._imagesScan) entry._imagesScan = scanPageImages(entry);
+  return entry._imagesScan;
+}
+
+async function scanPageImages(entry) {
+  entry._images = [];
+  if (!entry._page) return entry._images;
+  try {
+    const ops = await entry._page.getOperatorList();
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    const found = [];
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const name = opName(ops.fnArray[i]);
+      const args = ops.argsArray[i];
+      if (name === 'save') stack.push(ctm.slice());
+      else if (name === 'restore') ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
+      else if (name === 'transform') ctm = matMul(ctm, args);
+      else if (name === 'paintImageXObject' || name === 'paintImageMaskXObject') found.push({ objId: args[0], m: ctm.slice() });
+      else if (name === 'paintInlineImageXObject') found.push({ inline: args[0], m: ctm.slice() });
+    }
+    entry._images = found
+      .map(f => ({ ...f, box: unitBox(f.m) }))
+      .filter(f => f.box.w > 1 && f.box.h > 1);
+  } catch (err) { console.warn('image scan', err); }
+  return entry._images;
+}
+
+// load the image list for everything on screen, then redraw the hints
+function primeImages() {
+  for (const v of views.values()) {
+    pageImages(v.entry).then(() => { if (S.tool === 'moveimg') refreshPage(v.entry.id); });
+  }
+}
+
+function drawImageHints(v) {
+  for (const im of v.entry._images || []) {
+    const d = dispRect(v.viewport, im.box.x, im.box.y, im.box.x + im.box.w, im.box.y + im.box.h);
+    v.svg.appendChild(mkEl('rect', { x: d.x, y: d.y, width: d.w, height: d.h, class: 'imgHint' }));
+  }
+}
+
+function bitmapToDataUrl(img, flipX, flipY) {
+  const w = img.width, h = img.height;
+  if (!w || !h) return null;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.translate(flipX ? w : 0, flipY ? h : 0);
+  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+  if (img.bitmap) {
+    ctx.drawImage(img.bitmap, 0, 0);
+  } else if (img.data) {
+    const src = img.data;
+    const tmp = document.createElement('canvas');
+    tmp.width = w;
+    tmp.height = h;
+    const tctx = tmp.getContext('2d');
+    const id = tctx.createImageData(w, h);
+    if (src.length === w * h * 4) {
+      id.data.set(src);
+    } else if (src.length === w * h * 3) {
+      for (let i = 0, j = 0; i < src.length; i += 3, j += 4) {
+        id.data[j] = src[i];
+        id.data[j + 1] = src[i + 1];
+        id.data[j + 2] = src[i + 2];
+        id.data[j + 3] = 255;
+      }
+    } else {
+      return null; // 1bpp masks and friends: caller falls back to the canvas crop
+    }
+    tctx.putImageData(id, 0, 0);
+    ctx.drawImage(tmp, 0, 0);
+  } else {
+    return null;
+  }
+  return c.toDataURL('image/png');
+}
+
+// last resort: take the pixels straight off the rendered page
+function cropFromCanvas(v, d) {
+  try {
+    const src = v.canvas;
+    const dpr = src.width / (parseFloat(src.style.width) || src.width || 1);
+    const x = Math.max(0, Math.round(d.x * dpr));
+    const y = Math.max(0, Math.round(d.y * dpr));
+    const w = Math.min(src.width - x, Math.round(d.w * dpr));
+    const h = Math.min(src.height - y, Math.round(d.h * dpr));
+    if (w <= 0 || h <= 0) return null;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+    return c.toDataURL('image/png');
+  } catch { return null; }
+}
+
+async function liftImage(v, p) {
+  const imgs = await pageImages(v.entry);
+  if (!imgs.length) { toast('No movable image on this page', 'info', 2600); return; }
+  const [px, py] = p.pdf;
+  // later-painted images sit on top, so search back to front
+  const hit = [...imgs].reverse().find(im =>
+    px >= im.box.x && px <= im.box.x + im.box.w && py >= im.box.y && py <= im.box.y + im.box.h);
+  if (!hit) { toast('Click directly on an image', 'info', 2600); return; }
+
+  const d = dispRect(v.viewport, hit.box.x, hit.box.y, hit.box.x + hit.box.w, hit.box.y + hit.box.h);
+  let dataUrl = null;
+  try {
+    let img = null;
+    if (hit.objId && v.entry._page.objs.has(hit.objId)) img = v.entry._page.objs.get(hit.objId);
+    else if (hit.inline) img = hit.inline;
+    if (img) dataUrl = bitmapToDataUrl(img, hit.m[0] < 0, hit.m[3] < 0);
+  } catch (err) { console.warn('image extract', err); }
+  if (!dataUrl) dataUrl = cropFromCanvas(v, d); // rasterised at the current zoom
+  if (!dataUrl) { toast('Could not read that image', 'error'); return; }
+
+  const a = addAnn({
+    id: uid(), pageId: v.entry.id, type: 'image',
+    box: { ...hit.box },
+    cover: { ...hit.box, color: sampleBg(v, d) },
+    dataUrl,
+  });
+  select(a.id);
+  setTool('select');
+  if (Math.abs(hit.m[1]) > 0.01 || Math.abs(hit.m[2]) > 0.01) {
+    toast('That image is rotated or skewed in the page; the copy is placed upright', 'info', 5000);
+  } else {
+    toast('Drag to move it, or use the corner handle to resize');
+  }
+}
+
 // ---------- creating annotations ----------
 function createTextAnn(v, p) {
   const w = 220, h = S.fontSize * 1.6;
   const a = {
     id: uid(), pageId: v.entry.id, type: 'text',
     box: { x: p.pdf[0], y: p.pdf[1] - h, w, h },
-    text: '', fontSize: S.fontSize, color: S.colors.text, _fresh: true,
+    text: '', fontSize: S.fontSize, fontFamily: S.fontFamily, color: S.colors.text, _fresh: true,
   };
   S.annots.push(a);
   refreshPage(a.pageId);
@@ -470,6 +1019,17 @@ function mergeLineRects(rects) {
 }
 
 // ---------- pointer interactions ----------
+// Double-click detection that survives the DOM node being swapped between the
+// two clicks; a plain dblclick listener does not.
+let lastClick = { id: null, t: 0, x: 0, y: 0 };
+function isSecondClick(ev, id) {
+  const now = performance.now();
+  const hit = id !== null && lastClick.id === id && now - lastClick.t < 500 &&
+    Math.abs(ev.clientX - lastClick.x) < 6 && Math.abs(ev.clientY - lastClick.y) < 6;
+  lastClick = { id, t: now, x: ev.clientX, y: ev.clientY };
+  return hit;
+}
+
 function onDown(ev) {
   if (ev.button !== 0) return;
   if (ev.target.closest('.formField') || ev.target.closest('.annText.editing')) return;
@@ -477,6 +1037,10 @@ function onDown(ev) {
   // commit any in-progress text edit before the layer gets rebuilt
   const editing = document.querySelector('.annText.editing');
   if (editing) editing.blur();
+  // clicking anywhere but the parked box abandons it
+  const clickedAnn = ev.target.closest?.('[data-ann]')?.dataset?.ann;
+  if (parkedEdit === clickedAnn) parkedEdit = null;
+  else dropParked();
 
   const v = viewFromEvent(ev);
   const t = S.tool;
@@ -497,10 +1061,17 @@ function onDown(ev) {
     if (annEl && v) {
       const a = findAnn(annEl.dataset.ann);
       if (!a) return;
+      const second = isSecondClick(ev, a.id);
       select(a.id);
+      if (a.type === 'text' && (second || ev.detail >= 2)) {
+        ev.preventDefault();
+        startTextEdit(a, v.edit.querySelector(`.annText[data-ann="${a.id}"]`), { x: ev.clientX, y: ev.clientY });
+        return;
+      }
       drag = { mode: 'move', v, a, start: pagePoint(v, ev), orig: snapshotGeom(a), moved: false, el: annEl };
       ev.preventDefault();
     } else {
+      isSecondClick(ev, null);
       if (!ev.target.closest('.menu')) { select(null); closeNotePopup(); }
     }
     return;
@@ -518,7 +1089,28 @@ function onDown(ev) {
     ev.preventDefault();
   } else if (t === 'text') {
     ev.preventDefault(); // keep focus on the new text box (suppress default focus steal)
-    createTextAnn(v, p);
+    const hit = annEl && findAnn(annEl.dataset.ann);
+    if (hit?.type === 'text') {
+      // edit the box that was clicked instead of stacking a new one on top of it
+      select(hit.id);
+      setTool('select');
+      startTextEdit(hit, v.edit.querySelector(`.annText[data-ann="${hit.id}"]`), { x: ev.clientX, y: ev.clientY });
+    } else {
+      createTextAnn(v, p);
+    }
+  } else if (t === 'edittext') {
+    ev.preventDefault();
+    const prev = annEl && findAnn(annEl.dataset.ann);
+    if (prev?.type === 'text') {
+      select(prev.id);
+      setTool('select');
+      startTextEdit(prev, v.edit.querySelector(`.annText[data-ann="${prev.id}"]`), { x: ev.clientX, y: ev.clientY });
+    } else if (!editExistingText(v, ev)) {
+      toast('Click directly on the text you want to change', 'info', 2600);
+    }
+  } else if (t === 'moveimg') {
+    ev.preventDefault();
+    liftImage(v, p);
   } else if (t === 'note') {
     ev.preventDefault();
     createNoteAnn(v, p);
@@ -601,7 +1193,9 @@ function onUp(ev) {
   if (!drag) return;
   const d = drag;
   drag = null;
-  if (d.el && d.el.remove) d.el.remove();
+  // only the temporary pen/shape preview is disposable here; in 'move' mode
+  // d.el is the live annotation node and must survive
+  if (d.el && d.el.remove && (d.mode === 'pen' || d.mode === 'shape')) d.el.remove();
 
   if (d.mode === 'pen') {
     if (d.pts.length > 2) {
@@ -637,7 +1231,18 @@ function onUp(ev) {
 }
 
 function onKey(ev) {
-  const typing = ev.target.matches('input, textarea, select, [contenteditable="true"]');
+  if (modalOpen()) {
+    // the signature pad owns its keys; nothing here may reach the document
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      sigApi?.undoStroke();
+      return;
+    }
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); closeSigModal(); }
+    return;
+  }
+  const typing = ev.target.matches?.('input, textarea, select, [contenteditable="true"]');
   if (typing) return;
   if ((ev.key === 'Delete' || ev.key === 'Backspace') && S.selected) {
     ev.preventDefault();
@@ -659,47 +1264,93 @@ export function startImagePlacement(dataUrl, w, h, isSig = false) {
 
 const SIG_KEY = 'pdfeditor.signatures';
 
+// Stroke-level undo for the signature pad. Without it Ctrl+Z inside the modal
+// fell through to the document and undid the last edit to the PDF.
+let sigApi = null;
+export const modalOpen = () => !document.getElementById('sigModal')?.hidden;
+export function closeSigModal() {
+  const m = document.getElementById('sigModal');
+  if (m) m.hidden = true;
+}
+
 export function initSigModal() {
-  const modal = document.getElementById('sigModal');
   const canvas = document.getElementById('sigCanvas');
   const ctx = canvas.getContext('2d');
-  let drawing = false, last = null, empty = true;
+  let strokes = [], cur = null;
 
   const pos = (ev) => {
     const r = canvas.getBoundingClientRect();
     return [(ev.clientX - r.left) * (canvas.width / r.width), (ev.clientY - r.top) * (canvas.height / r.height)];
   };
-  canvas.addEventListener('pointerdown', (ev) => {
-    drawing = true; empty = false; last = pos(ev);
-    canvas.setPointerCapture(ev.pointerId);
-  });
-  canvas.addEventListener('pointermove', (ev) => {
-    if (!drawing) return;
-    const p = pos(ev);
+  const style = () => {
     ctx.strokeStyle = '#101828';
+    ctx.fillStyle = '#101828';
     ctx.lineWidth = 2.6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+  };
+  const drawStroke = (s) => {
+    style();
+    if (s.length === 1) {
+      ctx.beginPath();
+      ctx.arc(s[0][0], s[0][1], 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     ctx.beginPath();
-    ctx.moveTo(last[0], last[1]);
-    ctx.lineTo(p[0], p[1]);
+    ctx.moveTo(s[0][0], s[0][1]);
+    for (let i = 1; i < s.length; i++) ctx.lineTo(s[i][0], s[i][1]);
     ctx.stroke();
-    last = p;
-  });
-  canvas.addEventListener('pointerup', () => { drawing = false; });
+  };
+  const redraw = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const s of strokes) drawStroke(s);
+  };
+  // draw incrementally while the pen is down; full redraw only on undo/clear
+  const segment = (a, b) => {
+    style();
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.stroke();
+  };
 
-  const clear = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); empty = true; };
+  canvas.addEventListener('pointerdown', (ev) => {
+    cur = [pos(ev)];
+    strokes.push(cur);
+    drawStroke(cur);
+    canvas.setPointerCapture(ev.pointerId);
+  });
+  canvas.addEventListener('pointermove', (ev) => {
+    if (!cur) return;
+    const p = pos(ev);
+    segment(cur[cur.length - 1], p);
+    cur.push(p);
+  });
+  canvas.addEventListener('pointerup', () => { cur = null; });
+
+  const clear = () => { strokes = []; cur = null; redraw(); };
+  const undoStroke = () => {
+    if (!strokes.length) return false;
+    strokes.pop();
+    cur = null;
+    redraw();
+    return true;
+  };
+  sigApi = { clear, undoStroke };
+
   document.getElementById('sigClear').addEventListener('click', clear);
-  document.getElementById('sigCancel').addEventListener('click', () => { modal.hidden = true; });
-  document.getElementById('sigClose').addEventListener('click', () => { modal.hidden = true; });
+  document.getElementById('sigUndo').addEventListener('click', undoStroke);
+  document.getElementById('sigCancel').addEventListener('click', closeSigModal);
+  document.getElementById('sigClose').addEventListener('click', closeSigModal);
   document.getElementById('sigUse').addEventListener('click', () => {
-    if (empty) { toast('Draw a signature first', 'error'); return; }
+    if (!strokes.length) { toast('Draw a signature first', 'error'); return; }
     const trimmed = trimCanvas(canvas);
     if (!trimmed) { toast('Draw a signature first', 'error'); return; }
     const list = loadSigs();
     list.unshift(trimmed.url);
     localStorage.setItem(SIG_KEY, JSON.stringify(list.slice(0, 6)));
-    modal.hidden = true;
+    closeSigModal();
     startImagePlacement(trimmed.url, trimmed.w, trimmed.h, true);
   });
 }
@@ -709,11 +1360,9 @@ function loadSigs() {
 }
 
 export function openSigModal() {
-  const modal = document.getElementById('sigModal');
-  const canvas = document.getElementById('sigCanvas');
-  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  sigApi?.clear();
   renderSigList();
-  modal.hidden = false;
+  document.getElementById('sigModal').hidden = false;
 }
 
 function renderSigList() {

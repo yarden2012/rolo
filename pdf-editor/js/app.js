@@ -1,6 +1,6 @@
 // App bootstrap: toolbar wiring, keyboard shortcuts, file open/drop, menus.
 
-import { S, colorKey, hasEdits, clamp } from './state.js';
+import { S, colorKey, hasEdits, clamp, FONTS, fontKey } from './state.js';
 import { toast, showMenu, I } from './ui.js';
 import * as V from './viewer.js';
 import * as T from './tools.js';
@@ -20,6 +20,8 @@ const TOOL_HINTS = {
   line: 'Drag to draw a line',
   arrow: 'Drag to draw an arrow',
   text: 'Click where you want to add text',
+  edittext: 'Click a line of the document’s own text to replace it',
+  moveimg: 'Click a highlighted image to lift it, then drag it where you want',
   note: 'Click to place a sticky note',
   place: 'Click on the page to place it · Esc to cancel',
 };
@@ -62,6 +64,17 @@ function init() {
   document.querySelectorAll('#toolSeg [data-tool]').forEach(b =>
     b.addEventListener('click', () => T.setTool(b.dataset.tool)));
   document.addEventListener('toolchange', syncToolUI);
+  // reflect whatever is selected in the style controls
+  document.addEventListener('annselect', () => {
+    const a = S.annots.find(x => x.id === S.selected);
+    $('colorIn').value = (a && a.color) || S.colors[colorKey()];
+    // fall back to the defaults when nothing (or a non-text object) is selected,
+    // otherwise the controls keep showing a deselected box's values and misreport
+    // what the next new box will use
+    const isText = a && a.type === 'text';
+    $('fontIn').value = Math.round(isText ? (a.fontSize || S.fontSize) : S.fontSize);
+    $('fontFamilyIn').value = fontKey(isText ? a.fontFamily : S.fontFamily);
+  });
 
   $('btnShapes').addEventListener('click', () => showMenu($('btnShapes'), [
     { label: 'Rectangle', icon: I.square, checked: S.tool === 'rect', action: () => T.setTool('rect') },
@@ -91,11 +104,28 @@ function init() {
     S.colors[colorKey()] = ev.target.value;
     T.recolorSelected(ev.target.value);
   });
+  // committing a style control hands focus back to the text box being written
+  $('colorIn').addEventListener('change', () => T.resumeTextEdit());
   $('strokeIn').addEventListener('input', (ev) => { S.strokeW = +ev.target.value; });
   $('fontIn').addEventListener('change', (ev) => {
     S.fontSize = clamp(+ev.target.value || 14, 8, 96);
     ev.target.value = S.fontSize;
-    T.restyleSelectedFont(S.fontSize);
+    T.restyleSelected({ fontSize: S.fontSize });
+    T.resumeTextEdit();
+  });
+  const famSel = $('fontFamilyIn');
+  famSel.replaceChildren(...Object.entries(FONTS).map(([key, f]) => {
+    const o = document.createElement('option');
+    o.value = key;
+    o.textContent = f.label;
+    o.style.fontFamily = f.css;
+    return o;
+  }));
+  famSel.value = S.fontFamily;
+  famSel.addEventListener('change', (ev) => {
+    S.fontFamily = ev.target.value;
+    T.restyleSelected({ fontFamily: S.fontFamily });
+    T.resumeTextEdit();
   });
   $('btnUndo').addEventListener('click', T.undo);
   $('btnRedo').addEventListener('click', T.redo);
@@ -170,7 +200,8 @@ function init() {
 
   // ---- keyboard ----
   document.addEventListener('keydown', (ev) => {
-    const typing = ev.target.matches('input, textarea, select, [contenteditable="true"]');
+    if (T.modalOpen()) return; // the signature pad owns its own keys, incl. Ctrl+Z
+    const typing = ev.target.matches?.('input, textarea, select, [contenteditable="true"]');
     const mod = ev.ctrlKey || ev.metaKey;
     if (mod && ev.key === 's') { ev.preventDefault(); exportPdf(); return; }
     if (mod && ev.key === 'o') { ev.preventDefault(); openViaDialog(); return; }
@@ -180,7 +211,7 @@ function init() {
     if (mod && (ev.key === 'y' || (ev.shiftKey && ev.key.toLowerCase() === 'z'))) { ev.preventDefault(); T.redo(); return; }
     if (mod && (ev.key === '=' || ev.key === '+')) { ev.preventDefault(); V.setScale(S.scale * 1.2); return; }
     if (mod && ev.key === '-') { ev.preventDefault(); V.setScale(S.scale / 1.2); return; }
-    const keyTools = { v: 'select', h: 'highlight', u: 'underline', p: 'pen', t: 'text', n: 'note' };
+    const keyTools = { v: 'select', h: 'highlight', u: 'underline', p: 'pen', t: 'text', n: 'note', e: 'edittext', i: 'moveimg' };
     if (!mod && keyTools[ev.key.toLowerCase()] && !document.body.classList.contains('noDoc')) {
       T.setTool(keyTools[ev.key.toLowerCase()]);
     }

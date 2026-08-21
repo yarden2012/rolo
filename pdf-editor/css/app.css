@@ -97,13 +97,22 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
   width: 52px; height: 26px; background: var(--bg0); color: var(--txt);
   border: 1px solid var(--line); border-radius: 6px; padding: 0 4px 0 8px; font-family: inherit; font-size: 12px;
 }
-#strokeWrap, #fontWrap { display: none; }
+#fontFamilyIn {
+  height: 26px; background: var(--bg0); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 6px; padding: 0 4px 0 8px;
+  font-family: inherit; font-size: 12px; cursor: pointer;
+}
+#strokeWrap, #fontWrap, #fontFamWrap { display: none; }
 body[data-tool="pen"] #strokeWrap,
 body[data-tool="rect"] #strokeWrap,
 body[data-tool="ellipse"] #strokeWrap,
 body[data-tool="line"] #strokeWrap,
 body[data-tool="arrow"] #strokeWrap { display: inline-flex; }
-body[data-tool="text"] #fontWrap { display: inline-flex; }
+/* font controls stay up while a text box is selected or being typed into,
+   not only while the text tool itself is active */
+body[data-tool="text"] #fontWrap,
+body.textCtx #fontWrap,
+body.textCtx #fontFamWrap { display: inline-flex; }
 
 /* search */
 #searchWrap {
@@ -241,6 +250,11 @@ input[type="checkbox"].formField, input[type="radio"].formField { accent-color: 
 body[data-tool="select"] .overlay [data-ann] { pointer-events: visiblePainted; cursor: move; }
 .overlay .hl { mix-blend-mode: multiply; }
 .overlay .selBox { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
+/* outlines the images the move-image tool can pick up */
+.overlay .imgHint {
+  fill: rgba(59, 130, 246, 0.10); stroke: var(--accent); stroke-width: 1.5;
+  stroke-dasharray: 4 3; pointer-events: none;
+}
 .overlay .rzHandle { fill: #fff; stroke: var(--accent); stroke-width: 1.5; cursor: nwse-resize; pointer-events: all; }
 
 /* edit layer (text boxes, notes, images) */
@@ -250,6 +264,19 @@ body[data-tool="select"] .editLayer > * { pointer-events: auto; }
 body[data-tool="pen"] .editLayer, body[data-tool="rect"] .editLayer, body[data-tool="ellipse"] .editLayer,
 body[data-tool="line"] .editLayer, body[data-tool="arrow"] .editLayer { pointer-events: auto; cursor: crosshair; }
 body[data-tool="text"] .editLayer { pointer-events: auto; cursor: text; }
+/* let the text tool hit an existing box, so it edits that box instead of
+   stacking a new one on top of it */
+body[data-tool="text"] .editLayer > .annText { pointer-events: auto; cursor: text; }
+/* the edit-existing-text tool clicks document text runs, so the text layer has
+   to be hit-testable (and must not start a text selection) */
+body[data-tool="edittext"] .textLayer { pointer-events: auto; user-select: none; }
+body[data-tool="edittext"] .textLayer span { cursor: text; }
+body[data-tool="edittext"] .textLayer span:hover { background: rgba(59, 130, 246, 0.22); border-radius: 2px; }
+/* NB: the edit layer must stay click-through here — it covers the whole page at a
+   higher z-index than the text layer, so making it hittable would swallow every
+   click before it reaches a text run. Only existing boxes take clicks. */
+body[data-tool="edittext"] .editLayer > .annText { pointer-events: auto; cursor: text; }
+body[data-tool="moveimg"] .pageWrap, body[data-tool="moveimg"] .textLayer { cursor: grab; }
 body[data-tool="note"] .editLayer { pointer-events: auto; cursor: copy; }
 body[data-tool="place"] .editLayer { pointer-events: auto; cursor: copy; }
 
