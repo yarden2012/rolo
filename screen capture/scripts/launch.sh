@@ -6,5 +6,14 @@
 # PySide6 - even though the exact same invocation works fine from an
 # interactive shell. Setting PYTHONPATH directly and calling the system
 # interpreter sidesteps that venv auto-detection entirely.
-export PYTHONPATH="/home/rolo/rolo/screen capture/.venv/lib/python3.13/site-packages"
-exec /usr/bin/python3 "/home/rolo/rolo/screen capture/main.py"
+#
+# The site-packages directory is globbed rather than hardcoded: it used to
+# name python3.13, which silently stopped matching after a move to a distro
+# shipping python3.14.
+DIR="/home/rolo/rolo/screen capture"
+
+for sp in "$DIR"/.venv/lib/python*/site-packages; do
+    [ -d "$sp" ] && PYTHONPATH="$sp" && export PYTHONPATH
+done
+
+exec /usr/bin/python3 "$DIR/main.py"
