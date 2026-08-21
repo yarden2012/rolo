@@ -1,9 +1,10 @@
 # pkgfind
 
-One search box over every place an app can come from. Type once and get a
-single ranked list that tells you where each hit lives and whether it's already
-installed — instead of checking a store, then a `search` for each package
-manager, then remembering which container you put a CLI tool in.
+is an app that searches every place an app can come from at once. Type
+once and get a single ranked list that tells you where each hit lives and
+whether it's already installed — instead of checking a store, then a `search`
+for each package manager, then remembering which container you put a CLI tool
+in.
 
 Built first for Bazzite and the atomic Fedora spins (Silverblue, Kinoite,
 Bluefin), it now runs on ordinary Linux distros, macOS and Windows too. Every
@@ -37,8 +38,6 @@ the menu (or `-b` on the command line) when you want it.
 
 ## Install
 
-## Install
-
 On **Linux**, the quickest path is the local installer:
 
 ```sh
@@ -52,7 +51,7 @@ also a Flatpak (`flatpak/`) and a Homebrew formula — see the sections below.
 On **macOS** use Homebrew (see [macOS](#macos)). On **Windows** see
 [Windows](#windows).
 
-## Use
+## Use in CLI
 
 ```sh
 pkgfind                 # open the app
@@ -114,6 +113,15 @@ picks it up with no changes — give it a badge colour in `BADGE_CLASS` in
   and routes every package command back out through `flatpak-spawn --host`.
 - `rpm-ostree install` triggers a normal polkit password prompt and only takes
   effect after a reboot; the app says so before you commit to it.
+- Sources that install system-wide (dnf, apt, pacman, zypper, apk, snap) need
+  root. The commands are written with a plain `sudo` — that is what the CLI
+  runs and what the copy button hands you — but sudo can only prompt on a
+  terminal, so the GUI asks in a box of its own and pipes the answer into
+  `sudo -S`. It is checked before anything runs, so a typo just means typing it
+  again, and it is never stored, logged, or echoed into the command output.
+  Nothing is asked when sudo would not ask anyway: as root, with a warm sudo
+  timestamp, or under NOPASSWD. A cancelled prompt is reported as "not
+  authorised", not as a failed install.
 - A backend that fails or times out shows a toast and the other sources still
   return — one broken source never sinks the search.
 

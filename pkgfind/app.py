@@ -78,13 +78,21 @@ def copy_to_clipboard(widget: Gtk.Widget, text: str) -> None:
 class CommandDialog(Adw.Dialog):
     """Runs one or more commands in sequence and streams their output live."""
 
-    def __init__(self, title: str, steps: list[tuple[list[str], dict[str, str]]], caveat: str = ""):
+    def __init__(
+        self,
+        title: str,
+        steps: list[tuple[list[str], dict[str, str]]],
+        caveat: str = "",
+        password: str = "",
+    ):
         super().__init__()
         self.set_title(title)
         self.set_content_width(720)
         self.set_content_height(500)
         self._steps = steps
+        self._password = password
         self._proc: subprocess.Popen | None = None
+        self._auth_failed = False
         self.succeeded = False
         self.on_finished = None
 
@@ -130,17 +138,21 @@ class CommandDialog(Adw.Dialog):
         code = 0
         for cmd, env in self._steps:
             GLib.idle_add(self._append, f"$ {' '.join(shlex.quote(c) for c in cmd)}\n\n")
+            stdin_text = self._password + "\n" if be.wants_password(cmd) else None
             try:
-                self._proc = be.popen(cmd, env=env)
+                self._proc = be.popen(cmd, env=env, stdin_text=stdin_text)
             except OSError as exc:
                 GLib.idle_add(self._append, f"\nfailed to start: {exc}\n")
                 code = 1
                 break
             assert self._proc.stdout is not None
+            output = []
             for line in self._proc.stdout:
+                output.append(line)
                 GLib.idle_add(self._append, line)
             code = self._proc.wait()
             if code != 0:  # stop the sequence on the first failure
+                self._auth_failed = be.auth_failed(cmd, code, "".join(output))
                 break
             GLib.idle_add(self._append, "\n")
         GLib.idle_add(self._finish, code)
@@ -154,7 +166,16 @@ class CommandDialog(Adw.Dialog):
 
     def _finish(self, code: int) -> bool:
         self.succeeded = code == 0
-        self._status.set_text("Done." if self.succeeded else f"Exited with status {code}.")
+        if self.succeeded:
+            self._status.set_text("Done.")
+        elif self._auth_failed:
+            self._status.set_text("Not authorised — no password was given.")
+            self._append(
+                "\n✗ This needs administrator rights and the password prompt was "
+                "cancelled or refused. Nothing was changed.\n"
+            )
+        else:
+            self._status.set_text(f"Exited with status {code}.")
         self._button.set_label("Close")
         self._button.remove_css_class("destructive-action")
         self._button.add_css_class("suggested-action")
@@ -169,6 +190,42 @@ class CommandDialog(Adw.Dialog):
             self._proc.terminate()
             self._append("\n✗ Cancelled.\n")
         self.close()
+
+
+class PasswordDialog(Adw.AlertDialog):
+    """Asks for the password that a system-wide install needs.
+
+    What you type goes straight to sudo on stdin for that one run: it is never
+    written down, logged, or shown in the command output.
+    """
+
+    def __init__(self, what: str, error: str = ""):
+        body = f"{what} installs system-wide, so it needs your password."
+        if error:
+            body = f"{error}\n\n{body}"
+        super().__init__(heading="Administrator password", body=body)
+
+        self._entry = Adw.PasswordEntryRow(title="Password")
+        self._entry.connect("entry-activated", self._on_activate)
+        group = Adw.PreferencesGroup()
+        group.add(self._entry)
+        self.set_extra_child(group)
+
+        self.add_response("cancel", "Cancel")
+        self.add_response("go", "Authenticate")
+        self.set_response_appearance("go", Adw.ResponseAppearance.SUGGESTED)
+        self.set_default_response("go")
+        self.set_close_response("cancel")
+
+    def _on_activate(self, _entry: Adw.PasswordEntryRow) -> None:
+        # Enter inside the entry means "Authenticate". The entry swallows the
+        # key before the dialog's default response ever sees it, so say it here.
+        self.emit("response", "go")
+        self.close()
+
+    @property
+    def password(self) -> str:
+        return self._entry.get_text()
 
 
 class DetailDialog(Adw.Dialog):
@@ -622,6 +679,82 @@ class PkgfindWindow(Adw.ApplicationWindow):
         if result is not None:
             DetailDialog(self, result).present(self)
 
+    # -- running commands ---------------------------------------------------
+
+    def run_steps(
+        self,
+        title: str,
+        steps: list[tuple[list[str], dict[str, str]]],
+        caveat: str = "",
+        on_finished=None,
+    ) -> None:
+        """Show the console dialog for a set of commands, root access included.
+
+        A command that starts with `sudo` cannot prompt from here — there is no
+        terminal for it to prompt on — so the password is collected in a box of
+        our own before anything runs, and piped in. Commands that need no
+        password, and machines where sudo would not ask anyway, skip all this.
+        """
+        if not any(be.needs_root(cmd) for cmd, _ in steps):
+            self._start_steps(title, steps, caveat, on_finished, "")
+            return
+
+        def resolve() -> None:  # sudo -n is a real process; keep it off the UI thread
+            GLib.idle_add(proceed, be.needs_password())
+
+        def proceed(wanted: bool) -> bool:
+            if wanted:
+                self._ask_password(
+                    title,
+                    lambda password: self._start_steps(
+                        title, steps, caveat, on_finished, password
+                    ),
+                )
+            else:
+                self._start_steps(title, steps, caveat, on_finished, "")
+            return False
+
+        threading.Thread(target=resolve, daemon=True).start()
+
+    def _ask_password(self, title: str, on_password, error: str = "") -> None:
+        dialog = PasswordDialog(title, error)
+
+        def on_response(_dialog: Adw.AlertDialog, response: str) -> None:
+            if response != "go":
+                self.toast("Cancelled — nothing was changed")
+                return
+            password = dialog.password
+
+            def check() -> None:
+                GLib.idle_add(done, be.verify_password(password))
+
+            def done(ok: bool) -> bool:
+                if ok:
+                    on_password(password)
+                else:
+                    self._ask_password(title, on_password, "That password was refused.")
+                return False
+
+            threading.Thread(target=check, daemon=True).start()
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
+
+    def _start_steps(
+        self,
+        title: str,
+        steps: list[tuple[list[str], dict[str, str]]],
+        caveat: str,
+        on_finished,
+        password: str,
+    ) -> None:
+        prepared = [(be.as_root(cmd, bool(password)), env) for cmd, env in steps]
+        dialog = CommandDialog(title, prepared, caveat, password)
+        if on_finished:
+            dialog.on_finished = on_finished
+        dialog.present(self)
+        dialog.start()
+
     # -- install / remove ---------------------------------------------------
 
     def run_action(self, result: be.Result) -> None:
@@ -657,12 +790,12 @@ class PkgfindWindow(Adw.ApplicationWindow):
     ) -> None:
         if response != "go":
             return
-        dialog = CommandDialog(
-            f"{verb} {result.name}", [(cmd, backend.env())], backend.caveat
+        self.run_steps(
+            f"{verb} {result.name}",
+            [(cmd, backend.env())],
+            backend.caveat,
+            lambda ok: self._after_action(ok, result, verb),
         )
-        dialog.on_finished = lambda ok: self._after_action(ok, result, verb)
-        dialog.present(self)
-        dialog.start()
 
     def _after_action(self, ok: bool, result: be.Result, verb: str) -> None:
         if not ok:
@@ -754,10 +887,12 @@ class PkgfindWindow(Adw.ApplicationWindow):
     ) -> None:
         if response != "go":
             return
-        dialog = CommandDialog(f"Update {result.name}", [(cmd, backend.env())], backend.caveat)
-        dialog.on_finished = lambda ok: self._after_update(ok, result)
-        dialog.present(self)
-        dialog.start()
+        self.run_steps(
+            f"Update {result.name}",
+            [(cmd, backend.env())],
+            backend.caveat,
+            lambda ok: self._after_update(ok, result),
+        )
 
     def _after_update(self, ok: bool, result: be.Result) -> None:
         self.toast(f"{result.name} updated" if ok else f"Update failed for {result.name}")
@@ -789,10 +924,7 @@ class PkgfindWindow(Adw.ApplicationWindow):
     def _on_update_all_confirm(self, _alert, response: str, steps: list) -> None:
         if response != "go":
             return
-        dialog = CommandDialog("Update all", steps)
-        dialog.on_finished = lambda ok: self._after_update_all(ok)
-        dialog.present(self)
-        dialog.start()
+        self.run_steps("Update all", steps, "", lambda ok: self._after_update_all(ok))
 
     def _after_update_all(self, ok: bool) -> None:
         self.toast("Updates finished" if ok else "Some updates failed")

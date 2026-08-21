@@ -101,7 +101,8 @@ def _stream(cmd: list[str], backend: be.Backend) -> int:
     print(f"\n$ {' '.join(shlex.quote(c) for c in cmd)}\n")
     if backend.caveat:
         print(f"note: {backend.caveat}\n")
-    proc = be.popen(cmd, env=backend.env())
+    # A terminal is right there, so leave stdin alone: sudo can prompt on it.
+    proc = be.popen(cmd, env=backend.env(), keep_stdin=True)
     assert proc.stdout is not None
     for line in proc.stdout:
         sys.stdout.write(line)
@@ -219,7 +220,8 @@ def run_cli(args: argparse.Namespace) -> int:
         print(f"\n$ {' '.join(shlex.quote(c) for c in cmd)}\n")
         if backend.caveat:
             print(f"note: {backend.caveat}\n")
-        proc = be.popen(cmd, env=backend.env())
+        # A terminal is right there, so leave stdin alone: sudo can prompt on it.
+        proc = be.popen(cmd, env=backend.env(), keep_stdin=True)
         assert proc.stdout is not None
         for line in proc.stdout:
             sys.stdout.write(line)
