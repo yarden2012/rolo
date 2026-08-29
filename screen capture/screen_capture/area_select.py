@@ -29,6 +29,14 @@ class AreaSelectOverlay(QWidget):
         self.setCursor(Qt.CrossCursor)
         self.setFocusPolicy(Qt.StrongFocus)
 
+        # A compositor that blurs behind translucent windows (picom's
+        # blur-background) would blur the whole desktop underneath this
+        # overlay - including the transparent box you are aiming through -
+        # leaving nothing legible to frame. The title is the stable handle
+        # ~/.config/picom.conf matches on to switch blur, fade and the
+        # open/close animation off for this one window.
+        self.setWindowTitle("screen-capture-area-overlay")
+
         self.setGeometry(QApplication.primaryScreen().virtualGeometry())
 
     def showEvent(self, event):
