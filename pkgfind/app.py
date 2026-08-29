@@ -543,7 +543,7 @@ class PkgfindWindow(Adw.ApplicationWindow):
             application_name="pkgfind",
             application_icon="system-search-symbolic",
             developer_name="Built for Bazzite",
-            version="1.0",
+            version="0.6.1",
             comments="Search Flatpak, Fedora RPM, Homebrew and distrobox "
             "containers from one box, then install straight from the results.",
         )
@@ -718,8 +718,17 @@ class PkgfindWindow(Adw.ApplicationWindow):
 
     def _ask_password(self, title: str, on_password, error: str = "") -> None:
         dialog = PasswordDialog(title, error)
+        answered = False
 
         def on_response(_dialog: Adw.AlertDialog, response: str) -> None:
+            # Enter in the entry raises "go" itself and then closes the dialog,
+            # and closing raises the close response behind it. Only the first
+            # answer counts, or an authenticated install reports itself
+            # cancelled a moment later.
+            nonlocal answered
+            if answered:
+                return
+            answered = True
             if response != "go":
                 self.toast("Cancelled — nothing was changed")
                 return
