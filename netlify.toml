@@ -2,3 +2,10 @@
 # The site is a static file in docs/ — no build step.
 [build]
   publish = "docs"
+
+# Discord domain verification (the "Verify using HTTPS" option) reads
+# /.well-known/discord and expects plain text, not a download.
+[[headers]]
+  for = "/.well-known/discord"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
