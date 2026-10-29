@@ -35,3 +35,6 @@ Every push that touches `mc-mods/` builds all mods in GitHub Actions
 `main`, or when you start the workflow by hand, the jars are also committed to each mod's
 `dist/` folder. To build one locally, run `./gradlew build` in its folder. The 26.1.2 mods
 need Java 25.
+
+After the build, CI also runs [pvp-smoke-test](pvp-smoke-test/). It boots a real 26.1.2 client
+with all five mods and plays through a scripted fight to check they load and work together.

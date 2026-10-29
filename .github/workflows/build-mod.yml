@@ -50,6 +50,45 @@ jobs:
           name: ${{ matrix.mod }}
           path: mc-mods/${{ matrix.mod }}/build/libs/*.jar
 
+  # Boots a real 26.1.2 client with the five PvP mods (under a virtual display) and plays
+  # through a scripted fight; see mc-mods/pvp-smoke-test. Screenshots are uploaded either way.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect the PvP mod jars
+        run: |
+          mkdir -p mc-mods/pvp-smoke-test/mods
+          for mod in hit-rhythm ledge-sense kit-watch fight-recap threat-pings; do
+            find "artifacts/$mod" -name '*.jar' ! -name '*-sources.jar' -exec cp {} mc-mods/pvp-smoke-test/mods/ \;
+          done
+          ls -l mc-mods/pvp-smoke-test/mods
+
+      - name: Run client game test
+        working-directory: mc-mods/pvp-smoke-test
+        run: |
+          command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+          chmod +x gradlew
+          xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew --no-daemon runClientGameTest
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-test-screenshots
+          path: mc-mods/pvp-smoke-test/build/run/clientGameTest/screenshots
+
   # Commits the built jars into each mod's dist/ folder. Runs for pushes to main,
   # and for a manual run on any branch. Jars from mods that failed to build are skipped.
   publish:

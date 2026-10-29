@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "pvpsmoketest",
+	"version": "1.0.0",
+	"name": "PvP Mods Smoke Test",
+	"description": "Client game test that boots Minecraft with the five PvP mods and plays through a short scripted fight.",
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"io.github.yarden2012.pvpsmoketest.PvpModsClientGameTest"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"fabric-api": "*",
+		"hitrhythm": "*",
+		"ledgesense": "*",
+		"kitwatch": "*",
+		"fightrecap": "*",
+		"threatpings": "*"
+	}
+}
