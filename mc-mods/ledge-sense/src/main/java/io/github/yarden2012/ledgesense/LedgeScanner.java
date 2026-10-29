@@ -76,10 +76,9 @@ public class LedgeScanner {
 		for (int y = feetY; y >= level.getMinY(); y--) {
 			pos.set(x, y, z);
 			BlockState state = level.getBlockState(pos);
-			int depth = feetY - y;
 
 			if (state.is(Blocks.LAVA)) {
-				return new Hazard(Hazard.Kind.LAVA, Hazard.Severity.DEADLY, yaw, distance, depth);
+				return new Hazard(Hazard.Kind.LAVA, Hazard.Severity.DEADLY, yaw, distance, feetY - y);
 			}
 
 			if (!state.getFluidState().isEmpty()) {
@@ -87,6 +86,9 @@ public class LedgeScanner {
 			}
 
 			if (!state.getCollisionShape(level, pos).isEmpty()) {
+				// You land on top of this block, so the fall ends one block above it.
+				int depth = feetY - y - 1;
+
 				if (depth < config.minDrop) {
 					return null;
 				}

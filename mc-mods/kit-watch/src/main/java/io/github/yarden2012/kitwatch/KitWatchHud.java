@@ -100,7 +100,7 @@ public class KitWatchHud implements HudElement {
 
 		if (monitor.retotemPending() && (System.currentTimeMillis() / 200) % 2 == 0) {
 			graphics.pose().pushMatrix();
-			graphics.pose().translate(cx, cy - 64);
+			graphics.pose().translate(cx, cy - 110);
 			graphics.pose().scale(2.0F);
 			graphics.centeredText(font, Component.translatable("kitwatch.alert.retotem"), 0, 0, 0xFFFFDD33);
 			graphics.pose().popMatrix();
@@ -109,7 +109,7 @@ public class KitWatchHud implements HudElement {
 		Component banner = monitor.banner();
 
 		if (banner != null) {
-			graphics.centeredText(font, banner, cx, cy - 44, monitor.bannerColor());
+			graphics.centeredText(font, banner, cx, cy - 84, monitor.bannerColor());
 		}
 	}
 }

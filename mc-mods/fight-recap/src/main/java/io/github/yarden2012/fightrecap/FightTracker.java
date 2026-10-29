@@ -2,15 +2,18 @@ package io.github.yarden2012.fightrecap;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
@@ -23,11 +26,13 @@ import net.minecraft.world.item.Items;
  *
  * <p>A swing only counts as a hit once the server confirms it: the client never
  * sets a target's hurt timer itself, so a fresh hurt animation on the target
- * within a few ticks of our swing means the hit registered (and wasn't eaten
- * by invulnerability frames).
+ * within a few ticks of our swing, with us as the damage source, means the hit
+ * registered (and wasn't eaten by invulnerability frames). Each hurt animation
+ * confirms at most one swing, so spam-clicking can't inflate the count.
  */
 public class FightTracker {
-	private static final int HIT_CONFIRM_TICKS = 6;
+	/** Long enough to cover a laggy round trip to the server. */
+	private static final int HIT_CONFIRM_TICKS = 12;
 	private static final double ENGAGE_RANGE = 8.0;
 	private static final long OPPONENT_ACTIVE_MS = 4000;
 	private static final Identifier TOTEM_SOUND = Identifier.withDefaultNamespace("item.totem.use");
@@ -51,6 +56,8 @@ public class FightTracker {
 	private Fight current;
 	private long lastActionMs;
 	private final List<PendingHit> pending = new ArrayList<>();
+	/** Hurt timer of each swung-at target as of last tick, to spot when a new hurt animation starts. */
+	private final Map<Integer, Integer> lastTargetHurtTime = new HashMap<>();
 	/** Entity id of each opponent, mapped to when they last swung at us or got swung at. */
 	private final Map<Integer, Long> opponents = new HashMap<>();
 
@@ -120,7 +127,9 @@ public class FightTracker {
 		LocalPlayer player = client.player;
 		ClientLevel level = client.level;
 
+		// Left the world: wrap up whatever fight was running.
 		if (player == null || level == null) {
+			finish(Fight.Outcome.ENDED);
 			trackedPlayer = null;
 			return;
 		}
@@ -135,7 +144,7 @@ public class FightTracker {
 			return;
 		}
 
-		confirmHits(level);
+		confirmHits(player, level);
 		trackHealth(player, level);
 		trackConsumables(player.getInventory());
 		checkEnd(player, level);
@@ -146,6 +155,7 @@ public class FightTracker {
 		Fight fight = current;
 		current = null;
 		pending.clear();
+		lastTargetHurtTime.clear();
 		opponents.clear();
 
 		if (fight == null) {
@@ -173,37 +183,62 @@ public class FightTracker {
 		return config.playersOnly ? entity instanceof Player : entity instanceof LivingEntity;
 	}
 
-	private void confirmHits(ClientLevel level) {
+	private void confirmHits(LocalPlayer player, ClientLevel level) {
+		Set<Integer> hurtThisTick = new HashSet<>();
 		Iterator<PendingHit> iterator = pending.iterator();
 
+		// Oldest swing first: a new hurt animation is credited to the earliest swing still waiting.
 		while (iterator.hasNext()) {
 			PendingHit hit = iterator.next();
 
-			if (current != null && level.getEntity(hit.entityId) instanceof LivingEntity target && target.hurtTime > hit.hurtTimeBefore) {
-				current.landed(hit.crit);
-				lastActionMs = System.currentTimeMillis();
-				iterator.remove();
-			} else if (++hit.age > HIT_CONFIRM_TICKS) {
+			if (current != null && level.getEntity(hit.entityId) instanceof LivingEntity target && !hurtThisTick.contains(hit.entityId)) {
+				int before = lastTargetHurtTime.getOrDefault(hit.entityId, hit.hurtTimeBefore);
+
+				if (target.hurtTime > before) {
+					hurtThisTick.add(hit.entityId);
+
+					if (causedBy(target.getLastDamageSource(), player)) {
+						current.landed(hit.crit);
+						lastActionMs = System.currentTimeMillis();
+						iterator.remove();
+						continue;
+					}
+				}
+			}
+
+			if (++hit.age > HIT_CONFIRM_TICKS) {
 				iterator.remove();
 			}
 		}
+
+		lastTargetHurtTime.clear();
+
+		for (PendingHit hit : pending) {
+			if (level.getEntity(hit.entityId) instanceof LivingEntity target) {
+				lastTargetHurtTime.put(hit.entityId, target.hurtTime);
+			}
+		}
+	}
+
+	/** Whether the damage came from this player. An unknown source gets the benefit of the doubt. */
+	private static boolean causedBy(DamageSource source, Player player) {
+		return source == null || source.getEntity() == null || source.getEntity() == player;
 	}
 
 	private void trackHealth(LocalPlayer player, ClientLevel level) {
 		float health = totalHealth(player);
 
-		if (player.hurtTime > lastHurtTime) {
-			LivingEntity attacker = nearestOpponent(player, level);
+		// A hit restarts the hurt timer at 10. The server sends us two packets per hit that both
+		// restart it, so a 9 -> 10 bump a tick later is the same hit, not a new one.
+		if (player.hurtTime > lastHurtTime + 1) {
+			LivingEntity attacker = attackerOf(player, level);
 
-			// Only start a fight when someone is actually around, so fall damage doesn't count.
-			if (current != null || attacker != null) {
+			// Only hits from an opponent count; fall, fire and poison damage are still added to the damage total below.
+			if (attacker != null) {
 				ensureFight().tookHit();
 				lastActionMs = System.currentTimeMillis();
-
-				if (attacker != null) {
-					current.opponents.add(attacker.getName().getString());
-					opponents.put(attacker.getId(), System.currentTimeMillis());
-				}
+				current.opponents.add(attacker.getName().getString());
+				opponents.put(attacker.getId(), System.currentTimeMillis());
 			}
 		}
 
@@ -219,6 +254,21 @@ public class FightTracker {
 
 		lastHealth = health;
 		lastHurtTime = player.hurtTime;
+	}
+
+	/**
+	 * Who just hurt us. The server tells the client the damage source (for arrows and
+	 * other projectiles, the shooter), so we use that; without one, fall back to the
+	 * nearest opponent, and with a source that has no attacker (fall, fire) it's nobody.
+	 */
+	private LivingEntity attackerOf(LocalPlayer player, ClientLevel level) {
+		DamageSource source = player.getLastDamageSource();
+
+		if (source == null) {
+			return nearestOpponent(player, level);
+		}
+
+		return source.getEntity() instanceof LivingEntity attacker && attacker != player && isOpponent(attacker) ? attacker : null;
 	}
 
 	private LivingEntity nearestOpponent(LocalPlayer player, ClientLevel level) {

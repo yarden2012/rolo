@@ -31,7 +31,7 @@ public class ThreatPingsConfig {
 	public float durationSeconds = 3.0F;
 
 	/** Distance of the ping ring from the crosshair, in GUI pixels. */
-	public int ringRadius = 48;
+	public int ringRadius = 60;
 
 	public boolean showDistance = true;
 
