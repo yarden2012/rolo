@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "threatpings",
+	"version": "${version}",
+	"name": "Threat Pings",
+	"description": "See what you hear. Combat sounds around you - pearls thrown, bows and crossbows fired, potions splashed, gapples eaten, totems popped, shields broken, crystals and anchors exploding - show up as colored pings on a ring around your crosshair, pointing to where they came from, with distance and an above/below marker. Only sounds you could already hear are shown.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.threatpings.ThreatPingsClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "fightrecap",
+	"version": "${version}",
+	"name": "Fight Recap",
+	"description": "A post-match report for every PvP fight. Fight Recap quietly tracks each fight - swings vs. hits that actually registered, crits, your best combo and your opponent's, damage taken and healed, gapples, pearls, potions and totems used - and prints a recap in chat when it ends. Every fight is also logged to a CSV so you can see yourself improve.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.fightrecap.FightRecapClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

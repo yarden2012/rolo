@@ -1,0 +1,27 @@
+{
+	"key.threatpings.toggle": "Toggle Threat Pings",
+	"key.category.threatpings.main": "Threat Pings",
+
+	"threatpings.kind.pearl": "PEARL",
+	"threatpings.kind.bow": "BOW",
+	"threatpings.kind.crossbow": "XBOW",
+	"threatpings.kind.trident": "TRIDENT",
+	"threatpings.kind.potion": "SPLASH",
+	"threatpings.kind.drink": "DRINK",
+	"threatpings.kind.eat": "EAT",
+	"threatpings.kind.totem": "TOTEM",
+	"threatpings.kind.shield": "SHIELD",
+	"threatpings.kind.shield_break": "SHIELD BROKE",
+	"threatpings.kind.wind": "WIND",
+	"threatpings.kind.mace": "MACE",
+	"threatpings.kind.explosion": "BOOM",
+	"threatpings.kind.tnt": "TNT",
+	"threatpings.kind.anchor": "ANCHOR",
+	"threatpings.kind.rocket": "ROCKET",
+
+	"threatpings.message.on": "Threat Pings on",
+	"threatpings.message.off": "Threat Pings off",
+	"threatpings.message.setting": "%s is now %s",
+	"threatpings.message.kinds": "Ping kinds (green = on): %s",
+	"threatpings.message.unknown_kind": "Unknown ping kind '%s'. Use /threatpings kinds to list them"
+}

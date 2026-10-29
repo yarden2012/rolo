@@ -26,6 +26,10 @@ jobs:
             java: 25
           - mod: kit-watch
             java: 25
+          - mod: fight-recap
+            java: 25
+          - mod: threat-pings
+            java: 25
     steps:
       - uses: actions/checkout@v6
 

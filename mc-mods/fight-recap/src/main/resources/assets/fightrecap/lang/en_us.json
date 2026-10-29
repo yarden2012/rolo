@@ -1,0 +1,25 @@
+{
+	"key.fightrecap.last": "Show Last Fight Recap",
+	"key.category.fightrecap.main": "Fight Recap",
+
+	"fightrecap.outcome.win": "WIN",
+	"fightrecap.outcome.loss": "LOSS",
+	"fightrecap.outcome.ended": "ENDED",
+
+	"fightrecap.recap.header": "Fight Recap: %s vs %s (%s)",
+	"fightrecap.recap.offense": "Hits %s/%s swings (%s%%)  Crits %s  Best combo %s",
+	"fightrecap.recap.defense": "Took %s hits, %s damage  Their best combo %s",
+	"fightrecap.recap.resources": "Healed %s  Gapples %s  Pearls %s  Potions %s",
+	"fightrecap.recap.totems": "Totems popped: you %s, them %s",
+	"fightrecap.recap.unknown_opponent": "someone",
+
+	"fightrecap.live": "%s - %s   combo %s",
+
+	"fightrecap.history.line": "#%s %s vs %s  %s-%s  %s",
+	"fightrecap.history.empty": "No fights recorded yet this session",
+	"fightrecap.history.missing": "There is no fight #%s (have %s)",
+	"fightrecap.stats": "This session: %s fights, %s wins, %s losses",
+
+	"fightrecap.message.setting": "%s is now %s",
+	"fightrecap.message.log_failed": "Fight Recap could not write its log file - see the game log"
+}
