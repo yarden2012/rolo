@@ -1,0 +1,13 @@
+{
+	"key.ledgesense.toggle": "Toggle Ledge Sense",
+	"key.category.ledgesense.main": "Ledge Sense",
+
+	"ledgesense.hazard.void": "VOID %sm",
+	"ledgesense.hazard.lava": "LAVA %sm",
+	"ledgesense.hazard.drop": "DROP %s",
+	"ledgesense.warning.behind": "EDGE BEHIND YOU",
+
+	"ledgesense.message.on": "Ledge Sense on",
+	"ledgesense.message.off": "Ledge Sense off",
+	"ledgesense.message.setting": "%s is now %s"
+}

@@ -1,0 +1,23 @@
+{
+	"key.kitwatch.panel": "Toggle Kit Watch Panel",
+	"key.category.kitwatch.main": "Kit Watch",
+
+	"kitwatch.supply.totems": "Totems",
+	"kitwatch.supply.gapples": "Golden apples",
+	"kitwatch.supply.pearls": "Ender pearls",
+	"kitwatch.supply.wind_charges": "Wind charges",
+	"kitwatch.supply.arrows": "Arrows",
+	"kitwatch.supply.healing": "Healing potions",
+
+	"kitwatch.alert.low": "%s low: %s left",
+	"kitwatch.alert.out": "Out of %s!",
+	"kitwatch.alert.armor": "%s at %s%% durability",
+	"kitwatch.alert.effect_ended": "%s ran out",
+	"kitwatch.alert.retotem": "RE-TOTEM!",
+	"kitwatch.alert.no_totems": "NO TOTEMS LEFT",
+
+	"kitwatch.message.panel_on": "Kit Watch panel shown",
+	"kitwatch.message.panel_off": "Kit Watch panel hidden",
+	"kitwatch.message.setting": "%s is now %s",
+	"kitwatch.message.unknown_supply": "Unknown supply '%s'. Try: %s"
+}

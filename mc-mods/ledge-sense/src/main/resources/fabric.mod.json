@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "ledgesense",
+	"version": "${version}",
+	"name": "Ledge Sense",
+	"description": "Never get comboed off a cliff again. Ledge Sense watches the ground around you and shows a ring of arrows around your crosshair pointing at nearby void, lava and dangerous drops, colored by how deadly the fall would be, with an alarm if you get hit while standing next to one.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.ledgesense.LedgeSenseClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

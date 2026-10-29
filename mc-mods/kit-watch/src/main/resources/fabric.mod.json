@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "kitwatch",
+	"version": "${version}",
+	"name": "Kit Watch",
+	"description": "Keeps an eye on your PvP kit so you don't have to open your inventory mid-fight. Shows how many totems, gapples, pearls, wind charges, arrows and healing potions you have left, warns when you hit your last few, flags armor that's about to break, counts down buffs that are about to run out, and shouts RE-TOTEM the moment your offhand totem pops.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.kitwatch.KitWatchClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
