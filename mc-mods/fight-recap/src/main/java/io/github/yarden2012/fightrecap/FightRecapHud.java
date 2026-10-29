@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 
-/** A one-line live score under the crosshair while a fight is running: hits landed - hits taken, current combo. */
+/** A one-line live score right of the hotbar while a fight is running: hits landed - hits taken, current combo. */
 public class FightRecapHud implements HudElement {
 	private final FightRecapConfig config;
 	private final FightTracker tracker;
@@ -28,6 +28,7 @@ public class FightRecapHud implements HudElement {
 
 		int color = fight.combo >= 3 ? 0xFF55FF55 : fight.theirCombo >= 3 ? 0xFFFF5555 : 0xDDFFFFFF;
 		Component line = Component.translatable("fightrecap.live", fight.hitsLanded, fight.hitsTaken, fight.combo);
-		graphics.centeredText(client.font, line, graphics.guiWidth() / 2, graphics.guiHeight() / 2 + 60, color);
+		// The hotbar is 182 pixels wide and 22 tall, centered at the bottom of the screen.
+		graphics.text(client.font, line, graphics.guiWidth() / 2 + 91 + 8, graphics.guiHeight() - 15, color);
 	}
 }

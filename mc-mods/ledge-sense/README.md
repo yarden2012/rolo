@@ -22,7 +22,7 @@ fall would be.
   direction, because knockback can't carry you through it.
 - The most dangerous direction gets a label: `VOID 2m`, `LAVA 1m`, `DROP 14`.
 - **Hit alarm** – if you take a hit with a deadly edge within 2 blocks, a low warning
-  plays. If the edge is behind you, `EDGE BEHIND YOU` flashes on screen.
+  plays. If the edge is behind you, the label under the ring flashes `EDGE BEHIND YOU`.
 - The ring fades while you sneak, since sneaking already stops you walking off edges. It
   hides in creative and spectator, while flying, gliding or riding, and while falling.
 

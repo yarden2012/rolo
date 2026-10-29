@@ -21,7 +21,7 @@ PvP kit, so you never open your inventory mid-fight to count pearls.
   starts and another when the effect runs out. Beacon and conduit effects are ignored,
   because they're constantly refreshed.
 - **Totem guard** – the moment your offhand totem pops while you still carry spares, a
-  big flashing **RE-TOTEM!** appears until you have one back in your offhand. If that was
+  big **RE-TOTEM!** pulsing yellow and red appears until you have one back in your offhand. If that was
   your last one, you get **NO TOTEMS LEFT** instead.
 
 ## Controls

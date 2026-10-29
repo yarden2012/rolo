@@ -54,18 +54,17 @@ public class LedgeSenseHud implements HudElement {
 		}
 
 		float primaryAngle = (float) Math.toRadians(Mth.wrapDegrees(primary.yaw() - player.getYRot()));
+		int labelX = cx + Math.round(Mth.sin(primaryAngle) * (config.ringRadius + 14));
+		int labelY = cy - Math.round(Mth.cos(primaryAngle) * (config.ringRadius + 14)) - client.font.lineHeight / 2;
 
-		if (config.labels) {
-			int labelX = cx + Math.round(Mth.sin(primaryAngle) * (config.ringRadius + 14));
-			int labelY = cy - Math.round(Mth.cos(primaryAngle) * (config.ringRadius + 14)) - client.font.lineHeight / 2;
-			graphics.centeredText(client.font, label(primary), labelX, labelY, ARGB.multiplyAlpha(primary.severity().color(), opacity));
-		}
-
-		// Right after a hit next to a deadly edge, spell out where it is if you can't see it.
+		// Right after a hit next to a deadly edge you can't see, the label spells it out instead.
 		boolean behind = Math.abs(Math.toDegrees(primaryAngle)) > 110;
 
-		if (alarm.isFlashing() && behind && primary.severity() == Hazard.Severity.DEADLY && (alarm.flashTicks() / 3) % 2 == 0) {
-			graphics.centeredText(client.font, Component.translatable("ledgesense.warning.behind"), cx, cy + config.ringRadius + 16, 0xFFFF3333);
+		if (alarm.isFlashing() && behind && primary.severity() == Hazard.Severity.DEADLY) {
+			int color = (alarm.flashTicks() / 3) % 2 == 0 ? 0xFFFF3333 : 0xFFFFFFFF;
+			graphics.centeredText(client.font, Component.translatable("ledgesense.warning.behind"), labelX, labelY, color);
+		} else if (config.labels) {
+			graphics.centeredText(client.font, label(primary), labelX, labelY, ARGB.multiplyAlpha(primary.severity().color(), opacity));
 		}
 	}
 

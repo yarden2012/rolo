@@ -54,7 +54,7 @@ public class KitWatchHud implements HudElement {
 		}
 
 		int x = config.onRight() ? graphics.guiWidth() - COLUMN_WIDTH - 2 : 4;
-		int y = (graphics.guiHeight() - height) / 2;
+		int y = Math.max(2, (graphics.guiHeight() - height) / 2);
 		long now = System.currentTimeMillis();
 
 		for (Supply supply : Supply.values()) {
@@ -98,18 +98,20 @@ public class KitWatchHud implements HudElement {
 		int cx = graphics.guiWidth() / 2;
 		int cy = graphics.guiHeight() / 2;
 
-		if (monitor.retotemPending() && (System.currentTimeMillis() / 200) % 2 == 0) {
+		if (monitor.retotemPending()) {
+			// Pulses yellow/red rather than blinking, so it's never invisible when you glance at it.
+			int color = (System.currentTimeMillis() / 200) % 2 == 0 ? 0xFFFFDD33 : 0xFFFF5555;
 			graphics.pose().pushMatrix();
-			graphics.pose().translate(cx, cy - 110);
+			graphics.pose().translate(cx, Math.max(4, cy - 110));
 			graphics.pose().scale(2.0F);
-			graphics.centeredText(font, Component.translatable("kitwatch.alert.retotem"), 0, 0, 0xFFFFDD33);
+			graphics.centeredText(font, Component.translatable("kitwatch.alert.retotem"), 0, 0, color);
 			graphics.pose().popMatrix();
 		}
 
 		Component banner = monitor.banner();
 
 		if (banner != null) {
-			graphics.centeredText(font, banner, cx, cy - 84, monitor.bannerColor());
+			graphics.centeredText(font, banner, cx, Math.max(26, cy - 84), monitor.bannerColor());
 		}
 	}
 }

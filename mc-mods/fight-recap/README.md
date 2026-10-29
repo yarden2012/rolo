@@ -32,7 +32,7 @@ Totems popped: you 0, them 1
 - **Your opponent's totem pops**, picked up from the totem sound at their position.
 - **Outcome:** `WIN` if your opponent died, `LOSS` if you did, otherwise `ENDED`.
 
-A small live line under the crosshair (`8 - 3   combo 4`) shows hits landed, hits taken
+A small live line next to your hotbar (`8 - 3   combo 4`) shows hits landed, hits taken
 and your current combo while the fight runs. It turns green when you're on a 3+ combo
 and red when they are.
 
