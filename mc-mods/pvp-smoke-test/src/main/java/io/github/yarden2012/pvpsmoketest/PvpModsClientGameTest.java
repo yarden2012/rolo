@@ -20,10 +20,10 @@ import net.fabricmc.loader.api.FabricLoader;
 /**
  * Boots the client with all five PvP mods, stands the player on a pillar high above the
  * ground (void on every side for Ledge Sense), hands out a PvP kit (Kit Watch), lands three
- * full-charge sword hits on a pig (Hit Rhythm and Fight Recap), plays combat sounds around
- * the player (Threat Pings), takes the offhand totem away (Kit Watch's RE-TOTEM), then kills
- * the pig and checks Fight Recap logged the fight as a win. Screenshots of each step end up
- * in build/run/clientGameTest/screenshots.
+ * full-charge sword hits on a pig (Hit Rhythm and Fight Recap), takes a hit back, plays combat
+ * sounds around the player (Threat Pings), pops the offhand totem (Kit Watch's RE-TOTEM), then
+ * kills the pig and checks the row Fight Recap logged for the fight. Screenshots of each step
+ * end up in build/run/clientGameTest/screenshots.
  */
 @SuppressWarnings("UnstableApiUsage")
 public class PvpModsClientGameTest implements FabricClientGameTest {
@@ -42,9 +42,11 @@ public class PvpModsClientGameTest implements FabricClientGameTest {
 			TestServerContext server = singleplayer.getServer();
 			singleplayer.getClientLevel().waitForChunksRender();
 
-			// Player on a single block, pig on a walled platform two blocks south.
+			// Player on a single block, pig on a walled platform two blocks south. The glass
+			// behind the player stops the pig's hit from knocking them off the pillar.
 			server.runCommand("gamemode survival @a");
 			server.runCommand("setblock 0 150 0 minecraft:stone");
+			server.runCommand("fill 0 151 -1 0 152 -1 minecraft:glass");
 			server.runCommand("fill -1 150 2 1 150 4 minecraft:stone");
 			server.runCommand("fill -1 151 4 1 152 4 minecraft:glass");
 			server.runCommand("tp @a 0.5 151 0.5 0 10");
@@ -84,16 +86,16 @@ public class PvpModsClientGameTest implements FabricClientGameTest {
 				});
 			}
 
-			// Take a hit (no attacker, so no knockback off the pillar) and hear a fight around us.
-			server.runCommand("damage @a 3 minecraft:generic");
+			// Get hit back by the pig and hear a fight going on around us.
+			server.runCommand("damage @p 3 minecraft:mob_attack by @e[type=minecraft:pig,limit=1]");
 			server.runCommand("execute at @a run playsound minecraft:entity.ender_pearl.throw neutral @a ~6 ~ ~");
 			server.runCommand("execute at @a run playsound minecraft:item.totem.use player @a ~-5 ~ ~-4");
 			server.runCommand("execute at @a run playsound minecraft:entity.generic.eat player @a ~ ~1 ~-7");
 			context.waitTicks(6);
 			context.takeScreenshot("pvp-mods-in-combat");
 
-			// Losing the offhand totem while spares are left should raise RE-TOTEM.
-			server.runCommand("item replace entity @a weapon.offhand with minecraft:air");
+			// A lethal hit pops the offhand totem; with spares left, Kit Watch should shout RE-TOTEM.
+			server.runCommand("damage @p 100 minecraft:generic");
 			context.waitTicks(4);
 			context.takeScreenshot("pvp-mods-retotem");
 
@@ -104,16 +106,41 @@ public class PvpModsClientGameTest implements FabricClientGameTest {
 
 			String log = readFightLog();
 			LOGGER.info("fightrecap/fights.csv after the test:\n{}", log);
-
-			if (!log.lines().skip(1).anyMatch(line -> line.contains(",WIN,") && line.contains("Pig"))) {
-				throw new AssertionError("Fight Recap didn't log the win against the pig");
-			}
+			checkFightRow(log);
 
 			for (String id : MODS) {
 				if (!Files.exists(FabricLoader.getInstance().getConfigDir().resolve(id + ".json"))) {
 					throw new AssertionError(id + " didn't write its config file");
 				}
 			}
+		}
+	}
+
+	/** Checks Fight Recap's CSV row against what the test did. Column order is in FightLog's header. */
+	private static void checkFightRow(String log) {
+		List<String> rows = log.lines().skip(1).toList();
+
+		if (rows.size() != 1) {
+			throw new AssertionError("Expected exactly one fight in the log, got " + rows.size());
+		}
+
+		String[] columns = rows.getFirst().split(",");
+		expect(columns[1], "WIN", "outcome");
+		expect(columns[2], "\"Pig\"", "opponents");
+		expect(columns[4], "3", "swings");
+		expect(columns[9], "1", "hits taken");
+		expect(columns[16], "1", "own totem pops");
+		expect(columns[18], "1", "kills");
+
+		// Every swing should register, but give a laggy CI server some slack.
+		if (Integer.parseInt(columns[5]) < 2) {
+			throw new AssertionError("Only " + columns[5] + " of 3 hits registered");
+		}
+	}
+
+	private static void expect(String actual, String expected, String what) {
+		if (!actual.equals(expected)) {
+			throw new AssertionError("Fight Recap logged " + what + " = " + actual + ", expected " + expected);
 		}
 	}
 

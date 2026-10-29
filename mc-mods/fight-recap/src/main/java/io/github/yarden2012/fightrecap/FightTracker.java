@@ -67,7 +67,6 @@ public class FightTracker {
 	private int lastGapples;
 	private int lastPearls;
 	private int lastPotions;
-	private int lastTotems;
 
 	public FightTracker(FightRecapConfig config, Consumer<Fight> onFinished) {
 		this.config = config;
@@ -101,7 +100,10 @@ public class FightTracker {
 		pending.add(new PendingHit(target.getId(), living.hurtTime, crit));
 	}
 
-	/** Spots totem pops near an opponent. Our own pops are counted from the inventory instead. */
+	/**
+	 * Counts totem pops. The client plays the totem sound right where the entity that popped
+	 * one is standing, so the pop belongs to whoever is closest to the sound: us or an opponent.
+	 */
 	public void onSound(Identifier sound, double x, double y, double z) {
 		Minecraft client = Minecraft.getInstance();
 
@@ -109,17 +111,21 @@ public class FightTracker {
 			return;
 		}
 
-		if (client.player.distanceToSqr(x, y, z) < 2.25) {
-			return;
-		}
+		double ownDistance = client.player.distanceToSqr(x, y, z);
+		double opponentDistance = Double.MAX_VALUE;
 
 		for (int id : opponents.keySet()) {
 			Entity opponent = client.level.getEntity(id);
 
-			if (opponent != null && opponent.distanceToSqr(x, y, z) < 4.0) {
-				current.opponentTotemsPopped++;
-				return;
+			if (opponent != null) {
+				opponentDistance = Math.min(opponentDistance, opponent.distanceToSqr(x, y, z));
 			}
+		}
+
+		if (ownDistance <= opponentDistance && ownDistance < 1.0) {
+			current.totemsPopped++;
+		} else if (opponentDistance < 4.0) {
+			current.opponentTotemsPopped++;
 		}
 	}
 
@@ -289,14 +295,12 @@ public class FightTracker {
 		int gapples = lastGapples;
 		int pearls = lastPearls;
 		int potions = lastPotions;
-		int totems = lastTotems;
 		countConsumables(inventory);
 
 		if (current != null) {
 			current.gapples += Math.max(0, gapples - lastGapples);
 			current.pearls += Math.max(0, pearls - lastPearls);
 			current.potions += Math.max(0, potions - lastPotions);
-			current.totemsPopped += Math.max(0, totems - lastTotems);
 		}
 	}
 
@@ -304,7 +308,6 @@ public class FightTracker {
 		lastGapples = 0;
 		lastPearls = 0;
 		lastPotions = 0;
-		lastTotems = 0;
 
 		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
 			ItemStack stack = inventory.getItem(slot);
@@ -315,8 +318,6 @@ public class FightTracker {
 				lastPearls += stack.getCount();
 			} else if (stack.is(Items.POTION) || stack.is(Items.SPLASH_POTION) || stack.is(Items.LINGERING_POTION)) {
 				lastPotions += stack.getCount();
-			} else if (stack.is(Items.TOTEM_OF_UNDYING)) {
-				lastTotems += stack.getCount();
 			}
 		}
 	}

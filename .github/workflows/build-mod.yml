@@ -89,10 +89,11 @@ jobs:
           name: smoke-test-screenshots
           path: mc-mods/pvp-smoke-test/build/run/clientGameTest/screenshots
 
-  # Commits the built jars into each mod's dist/ folder. Runs for pushes to main,
-  # and for a manual run on any branch. Jars from mods that failed to build are skipped.
+  # Commits the built jars into each mod's dist/ folder, and the smoke test's screenshots into
+  # mc-mods/pvp-smoke-test/screenshots. Runs for pushes to main, and for a manual run on any
+  # branch. Jars from mods that failed to build are skipped.
   publish:
-    needs: build
+    needs: [build, smoke-test]
     if: ${{ !cancelled() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     steps:
@@ -102,10 +103,11 @@ jobs:
         with:
           path: artifacts
 
-      - name: Commit jars to dist folders
+      - name: Commit jars and screenshots
         run: |
           for dir in artifacts/*/; do
             mod=$(basename "$dir")
+            [ -d "mc-mods/$mod" ] || continue
             mkdir -p "mc-mods/$mod/dist"
             for f in "$dir"*.jar; do
               case "$f" in
@@ -114,9 +116,15 @@ jobs:
               esac
             done
           done
+          git add mc-mods/*/dist
+          if compgen -G "artifacts/smoke-test-screenshots/*.png" > /dev/null; then
+            rm -rf mc-mods/pvp-smoke-test/screenshots
+            mkdir -p mc-mods/pvp-smoke-test/screenshots
+            cp artifacts/smoke-test-screenshots/*.png mc-mods/pvp-smoke-test/screenshots/
+            git add -A mc-mods/pvp-smoke-test/screenshots
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mc-mods/*/dist
           git diff --cached --quiet && exit 0
           git commit -m "Add built mod jars [skip ci]"
           git pull --rebase origin "$GITHUB_REF_NAME"
