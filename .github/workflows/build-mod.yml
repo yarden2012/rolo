@@ -1,12 +1,10 @@
-name: Build Mode Switcher
+name: Build Mods
 
 on:
   push:
-    branches:
-      - main
     paths:
       - 'mc-mods/**'
-      - '!mc-mods/mode-switcher/dist/**'
+      - '!mc-mods/*/dist/**'
       - '.github/workflows/build-mod.yml'
   workflow_dispatch:
 
@@ -16,16 +14,24 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mod: mode-switcher
+            java: 21
+          - mod: hit-rhythm
+            java: 25
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: ${{ matrix.java }}
 
       - name: Build mod
-        working-directory: mc-mods/mode-switcher
+        working-directory: mc-mods/${{ matrix.mod }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon build
@@ -33,20 +39,38 @@ jobs:
       - name: Upload jar as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mode-switcher
-          path: mc-mods/mode-switcher/build/libs/*.jar
+          name: ${{ matrix.mod }}
+          path: mc-mods/${{ matrix.mod }}/build/libs/*.jar
 
-      - name: Commit jar to dist folder
+  # Commits the built jars into each mod's dist/ folder. Runs for pushes to main,
+  # and for a manual run on any branch. Jars from mods that failed to build are skipped.
+  publish:
+    needs: build
+    if: ${{ !cancelled() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Commit jars to dist folders
         run: |
-          mkdir -p mc-mods/mode-switcher/dist
-          for f in mc-mods/mode-switcher/build/libs/*.jar; do
-            case "$f" in
-              *-sources.jar) ;;
-              *) cp "$f" mc-mods/mode-switcher/dist/ ;;
-            esac
+          for dir in artifacts/*/; do
+            mod=$(basename "$dir")
+            mkdir -p "mc-mods/$mod/dist"
+            for f in "$dir"*.jar; do
+              case "$f" in
+                *-sources.jar) ;;
+                *) cp "$f" "mc-mods/$mod/dist/" ;;
+              esac
+            done
           done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mc-mods/mode-switcher/dist
-          git diff --cached --quiet || git commit -m "Add built mod jar [skip ci]"
-          git push
+          git add mc-mods/*/dist
+          git diff --cached --quiet && exit 0
+          git commit -m "Add built mod jars [skip ci]"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

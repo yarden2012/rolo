@@ -1,0 +1,23 @@
+{
+	"key.hitrhythm.panel": "Toggle Hit Rhythm Stats Panel",
+	"key.category.hitrhythm.main": "Hit Rhythm",
+
+	"hitrhythm.grade.perfect": "PERFECT",
+	"hitrhythm.grade.good": "GOOD",
+	"hitrhythm.grade.early": "EARLY",
+	"hitrhythm.tag.crit": "CRIT",
+	"hitrhythm.tag.knockback": "KB",
+	"hitrhythm.tag.damage": "(%s%% dmg)",
+
+	"hitrhythm.panel.title": "Hit Rhythm",
+	"hitrhythm.panel.hits": "Hits: %s   Avg charge: %s%%",
+	"hitrhythm.panel.clean": "Clean: %s%%   Perfect: %s%%",
+	"hitrhythm.panel.bonus": "Crits: %s   KB hits: %s",
+	"hitrhythm.panel.streak": "Clean streak: %s (best %s)",
+
+	"hitrhythm.message.panel_on": "Hit Rhythm stats panel shown",
+	"hitrhythm.message.panel_off": "Hit Rhythm stats panel hidden",
+	"hitrhythm.message.reset": "Hit Rhythm stats reset",
+	"hitrhythm.message.setting": "%s is now %s",
+	"hitrhythm.message.no_hits": "No graded hits yet - go hit something!"
+}

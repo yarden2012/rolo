@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "hitrhythm",
+	"version": "${version}",
+	"name": "Hit Rhythm",
+	"description": "An attack-timing coach for 1.9+ combat. A soft tick tells you the moment your weapon is fully charged, every hit you land is graded (Perfect / Good / Early, plus Crit and Knockback tags), and a stats panel tracks how cleanly you've been hitting.",
+	"authors": [
+		"yarden2012"
+	],
+	"contact": {
+		"sources": "https://github.com/yarden2012/rolo"
+	},
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.yarden2012.hitrhythm.HitRhythmClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
