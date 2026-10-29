@@ -77,6 +77,10 @@ jobs:
 
       - name: Run client game test
         working-directory: mc-mods/pvp-smoke-test
+        env:
+          # The runner has no sound card. OpenAL's null device lets the sound engine start anyway,
+          # which Threat Pings and Fight Recap's totem tracking need.
+          ALSOFT_DRIVERS: "null"
         run: |
           command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
           chmod +x gradlew
