@@ -229,6 +229,64 @@ public class DrillTest {
         assertEquals(0.0, result.accuracy(), 1e-9);
     }
 
+    @Test
+    public void choiceTapsJustBesideTheLitPadStillCount() {
+        // At speed a finger lands a little off target: in the gap between pads, or just past
+        // the outer edge. Those taps chose the right pad and must not be scored as wrong.
+        start(Mode.CHOICE, 4);
+        tapCenter();
+        float mid = view.getWidth() / 2f; // the grid is centred horizontally
+        for (int trial = 0; trial < 4; trial++) {
+            float[] box = waitForBounds(Ui.CHOICE_LIT, 4000);
+            boolean left = box[2] < mid;
+            float gap = 2 * (left ? mid - box[2] : box[0] - mid);
+            boolean top = inTopRow(box, gap);
+            float x = (box[0] + box[2]) / 2f;
+            float y = (box[1] + box[3]) / 2f;
+            switch (trial) {
+                case 0: // in the gap beside it, on its side of the middle
+                    x = left ? box[2] + 3 : box[0] - 3;
+                    break;
+                case 1: // just past its outer side edge
+                    x = left ? box[0] - 8 : box[2] + 8;
+                    break;
+                case 2: // in the gap above or below it
+                    y = top ? box[3] + 3 : box[1] - 3;
+                    break;
+                default: // just past its outer top or bottom edge
+                    y = top ? box[1] - 8 : box[3] + 8;
+                    break;
+            }
+            idle(300);
+            tap(x, y);
+            idle(500);
+        }
+        assertNotNull(result);
+        assertEquals("wrong-pad errors", 0, result.errors);
+        assertEquals(4, result.count());
+    }
+
+    @Test
+    public void choiceIgnoresStrayTouchesFarFromThePads() {
+        start(Mode.CHOICE, 1);
+        tapCenter();
+        float[] lit = waitForColor(Ui.CHOICE_LIT, 4000);
+        idle(200);
+        tap(view.getWidth() / 2f, 10); // a brush on the top bar, nowhere near a pad
+        idle(100);
+        tap(lit[0], lit[1]);
+        idle(500);
+        assertNotNull(result);
+        assertEquals(0, result.errors);
+        assertEquals(1, result.count());
+    }
+
+    /** Whether the lit pad is in the top row: an idle pad sits directly below it. */
+    private boolean inTopRow(float[] box, float gap) {
+        float y = box[3] + gap + 10;
+        return y < view.getHeight() && pixel((box[0] + box[2]) / 2f, y) == Ui.SURFACE2;
+    }
+
     // ------------------------------------------------------------------ Aim
 
     @Test
@@ -346,6 +404,34 @@ public class DrillTest {
             }
         }
         return n == 0 ? null : new float[] {(float) sx / n, (float) sy / n};
+    }
+
+    /** Bounding box {left, top, right, bottom} of pixels of exactly {@code color}, or null. */
+    private float[] findBounds(int color) {
+        Bitmap b = render();
+        int l = Integer.MAX_VALUE, t = Integer.MAX_VALUE, r = -1, btm = -1;
+        for (int y = 0; y < b.getHeight(); y++) {
+            for (int x = 0; x < b.getWidth(); x++) {
+                if (b.getPixel(x, y) == color) {
+                    l = Math.min(l, x);
+                    t = Math.min(t, y);
+                    r = Math.max(r, x);
+                    btm = Math.max(btm, y);
+                }
+            }
+        }
+        return r < 0 ? null : new float[] {l, t, r + 1, btm + 1};
+    }
+
+    private float[] waitForBounds(int color, long maxMs) {
+        long waited = 0;
+        float[] box;
+        while ((box = findBounds(color)) == null) {
+            idle(STEP_MS);
+            waited += STEP_MS;
+            if (waited > maxMs) fail("never saw the stimulus");
+        }
+        return box;
     }
 
     private float[] waitForColor(int color, long maxMs) {

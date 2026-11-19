@@ -24,6 +24,9 @@ Settings: round length (short, standard or long) and vibration on tap.
 
 - **False starts don't count as reactions.** Tapping before the stimulus, or less than
   100 ms after it (too fast to be a real reaction), is a false start, and that trial runs again.
+- **Choice taps count for the pad you went for.** Each pad owns its quarter of the grid,
+  gaps and a margin included, so a finger landing just beside the lit pad still counts.
+  Touches well away from the pads (a palm, the top bar) are ignored rather than scored.
 - **Unpredictable waits.** Tap reaction waits 1.2 s plus a random exponential delay, so
   there's no "it must be any moment now" rhythm to count along to.
 - **Personal bests must be earned.** A round needs at least 3 valid reactions, and in modes

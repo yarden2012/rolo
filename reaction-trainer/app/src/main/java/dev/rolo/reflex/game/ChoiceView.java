@@ -74,11 +74,21 @@ final class ChoiceView extends TrainerView {
         }
     }
 
+    /**
+     * Which pad a tap chose. Each pad owns its whole quadrant of the grid, gaps included, plus a
+     * margin around the grid: the drill tests which pad you pick, not how precisely you hit it,
+     * and at speed a finger often lands just beside the pad it was going for. Touches well away
+     * from the grid (a palm, a brush on the top bar) return -1 and are ignored, not scored.
+     */
     private int padAt(float x, float y) {
-        for (int i = 0; i < 4; i++) {
-            if (pads[i].contains(x, y)) return i;
+        float slop = dp(40);
+        if (x < pads[0].left - slop || x > pads[1].right + slop
+                || y < pads[0].top - slop || y > pads[2].bottom + slop) {
+            return -1;
         }
-        return -1;
+        int col = x < (pads[0].right + pads[1].left) / 2f ? 0 : 1;
+        int row = y < (pads[0].bottom + pads[2].top) / 2f ? 0 : 1;
+        return row * 2 + col;
     }
 
     @Override
@@ -89,12 +99,15 @@ final class ChoiceView extends TrainerView {
                 advance();
                 break;
             case WAITING:
+                if (padAt(x, y) < 0) return; // a stray touch, not a jump at a pad
                 cancelPending();
                 falseStarts++;
                 buzz();
                 feedback(Outcome.EARLY, -1);
                 break;
             case LIT: {
+                int hit = padAt(x, y);
+                if (hit < 0) return; // a stray touch, not an answer
                 handler.removeCallbacks(timeout);
                 int ms = elapsedMs(onsetNanos, t);
                 if (ms < MIN_REACTION_MS) {
@@ -104,7 +117,6 @@ final class ChoiceView extends TrainerView {
                     return;
                 }
                 trialsDone++;
-                int hit = padAt(x, y);
                 if (hit == lit) {
                     recordTime(ms);
                     correct++;
