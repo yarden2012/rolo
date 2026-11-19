@@ -111,6 +111,12 @@ public final class TrialBarsView extends View {
         float lx = Math.max(left + vw / 2f, Math.min(right - vw / 2f, lcx));
         float ly = bottom - lh - Ui.dp(getContext(), 5);
 
+        // A surface-coloured backing, so the average line passes behind the label, not through it.
+        Paint.FontMetrics vm = label.getFontMetrics();
+        float pad = Ui.dp(getContext(), 3);
+        rect.set(lx - vw / 2f - pad, ly + vm.ascent, lx + vw / 2f + pad, ly + vm.descent);
+        bar.setColor(Ui.SURFACE);
+        c.drawRect(rect, bar);
         label.setColor(Ui.TEXT);
         label.setTextAlign(Paint.Align.CENTER);
         c.drawText(value, lx, ly, label);
