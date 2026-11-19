@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Reflex</string>
+    <string name="tagline">Train your reaction time. Works fully offline.</string>
+
+    <string name="settings">Settings</string>
+    <string name="statistics">Statistics</string>
+    <string name="back">Back</string>
+    <string name="done">Done</string>
+    <string name="play_again">Play again</string>
+    <string name="cancel">Cancel</string>
+    <string name="clear">Clear</string>
+
+    <string name="section_modes">Training modes</string>
+    <string name="summary_rounds">Rounds played</string>
+    <string name="summary_fastest">Fastest tap</string>
+    <string name="summary_streak">Day streak</string>
+
+    <!-- Modes -->
+    <string name="mode_simple">Tap reaction</string>
+    <string name="mode_simple_desc">Tap the instant the screen turns green.</string>
+    <string name="mode_simple_how">Wait for the screen to turn green, then tap anywhere as fast as you can. Tapping early is a false start.</string>
+
+    <string name="mode_gonogo">Go / No-Go</string>
+    <string name="mode_gonogo_desc">Tap on green circles. Hold back on red squares.</string>
+    <string name="mode_gonogo_how">A green circle means tap. A red square means don\'t. Keep your eyes on the cross in the middle.</string>
+
+    <string name="mode_choice">Choice reaction</string>
+    <string name="mode_choice_desc">Hit whichever of four pads lights up.</string>
+    <string name="mode_choice_how">Keep your fingers near the four pads. When one lights up, tap that one as fast as you can.</string>
+
+    <string name="mode_aim">Aim</string>
+    <string name="mode_aim_desc">Tap targets as they pop up around the screen.</string>
+    <string name="mode_aim_how">Targets appear one at a time. Tap each one as fast as you can. Taps that miss count against your accuracy.</string>
+
+    <string name="mode_meta">Best %1$d ms · %2$s</string>
+    <string name="mode_meta_unranked">%s · no best yet</string>
+    <string name="mode_meta_new">Not played yet</string>
+
+    <plurals name="rounds">
+        <item quantity="one">%d round</item>
+        <item quantity="other">%d rounds</item>
+    </plurals>
+    <plurals name="trials">
+        <item quantity="one">%d trial</item>
+        <item quantity="other">%d trials</item>
+    </plurals>
+    <plurals name="targets">
+        <item quantity="one">%d target</item>
+        <item quantity="other">%d targets</item>
+    </plurals>
+
+    <!-- In-game -->
+    <string name="start_hint">Tap anywhere to start</string>
+    <string name="paused">Paused</string>
+    <string name="tap_to_continue">Tap to continue</string>
+    <string name="tap_for_results">Tap to see your results</string>
+    <string name="hud_progress">%1$d / %2$d</string>
+    <string name="unit_ms">ms</string>
+
+    <string name="simple_wait">Wait for green…</string>
+    <string name="simple_tap">TAP!</string>
+    <string name="too_soon">Too soon!</string>
+    <string name="too_soon_body">Wait for green before you tap.</string>
+    <string name="try_again">Tap to try again</string>
+    <string name="missed">Missed</string>
+    <string name="missed_body">No tap within 2.5 seconds.</string>
+    <string name="best_of_round">Best of the round</string>
+
+    <string name="rating_1">Exceptional</string>
+    <string name="rating_2">Excellent</string>
+    <string name="rating_3">Great</string>
+    <string name="rating_4">Good</string>
+    <string name="rating_5">Not bad</string>
+    <string name="rating_6">Keep at it</string>
+
+    <string name="fb_ms">%d ms</string>
+    <string name="fb_wrong_pad">Wrong pad</string>
+    <string name="fb_too_slow">Too slow</string>
+    <string name="fb_too_early_pad">Too early — wait for a pad to light up</string>
+    <string name="fb_hold">Good hold</string>
+    <string name="fb_commission">Don\'t tap red squares</string>
+    <string name="fb_omission">Too slow — tap on green</string>
+    <string name="fb_too_early_shape">Too early — wait for the shape</string>
+    <string name="legend_tap">Tap</string>
+    <string name="legend_hold">Hold</string>
+    <string name="aim_avg">avg %d ms</string>
+
+    <!-- Results -->
+    <string name="results_title">Round complete</string>
+    <string name="results_unit_avg">ms average</string>
+    <string name="results_unit_target">ms per target</string>
+    <string name="results_no_times">No valid reactions this round, so it wasn\'t saved.</string>
+    <string name="badge_pb">New personal best</string>
+    <string name="badge_baseline">First round — this is your baseline</string>
+    <string name="compare_faster">%d ms faster than your recent average</string>
+    <string name="compare_slower">%d ms slower than your recent average</string>
+    <string name="compare_same">Right on your recent average</string>
+    <string name="results_trials">Each trial</string>
+    <string name="results_trials_hint">Tap a bar to see its time</string>
+    <string name="bars_avg">avg %d</string>
+
+    <string name="tile_best">Best</string>
+    <string name="tile_fastest">Fastest</string>
+    <string name="tile_median">Median</string>
+    <string name="tile_consistency">Consistency</string>
+    <string name="tile_accuracy">Accuracy</string>
+    <string name="tile_false_starts">False starts</string>
+    <string name="tile_wrong_taps">Red squares tapped</string>
+    <string name="tile_missed_greens">Greens missed</string>
+    <string name="tile_wrong_pads">Wrong pads</string>
+    <string name="tile_missed_taps">Missed taps</string>
+
+    <string name="value_ms">%d ms</string>
+    <string name="value_sd">±%d ms</string>
+    <string name="value_pct">%d%%</string>
+    <string name="value_count">%d</string>
+    <string name="value_none">—</string>
+
+    <!-- Statistics -->
+    <string name="stats_rounds">Rounds</string>
+    <string name="stats_best_avg">Best average</string>
+    <string name="stats_recent">Last 10 average</string>
+    <string name="stats_fastest">Fastest single</string>
+    <string name="stats_accuracy">Last 10 accuracy</string>
+    <string name="stats_chart_title">Average per round</string>
+    <string name="stats_chart_sub">Last %d rounds · drag across the chart for details</string>
+    <string name="stats_recent_title">Recent rounds</string>
+    <string name="stats_empty">No rounds yet. Play a round of %s and your progress shows up here.</string>
+    <string name="stats_clear">Clear %s history</string>
+    <string name="stats_clear_title">Clear history?</string>
+    <string name="stats_clear_body">This deletes every %s round. It can\'t be undone.</string>
+    <string name="chart_best">Best %d</string>
+    <string name="chart_round">Round %1$d · %2$s</string>
+    <string name="chart_desc">Average reaction time per round, %1$d rounds. Latest %2$d ms, best %3$d ms.</string>
+    <string name="round_row_accuracy">%1$d ms · %2$d%%</string>
+
+    <!-- Settings -->
+    <string name="settings_length">Round length</string>
+    <string name="length_short">Short</string>
+    <string name="length_standard">Standard</string>
+    <string name="length_long">Long</string>
+    <string name="length_hint">Tap reaction runs 5, 10 or 20 trials. The other modes scale the same way.</string>
+    <string name="settings_haptics">Vibrate on tap</string>
+    <string name="settings_timing_title">About timing</string>
+    <string name="settings_timing_body">Times run from the first moment the stimulus can be on screen to the moment the touchscreen registers your finger, using the system\'s own touch timestamps. Every phone adds a little display and touch delay, so the fairest comparison is you against yourself on the same device.</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Surfaces, darkest to lightest. Mirrored in Ui.java for canvas drawing. -->
+    <color name="bg">#0E1116</color>
+    <color name="surface">#161A21</color>
+    <color name="surface2">#1F2530</color>
+    <color name="outline">#2A313D</color>
+
+    <color name="text">#ECEFF4</color>
+    <color name="text2">#A4ADBD</color>
+    <color name="text3">#6B7587</color>
+
+    <color name="accent">#2BD97C</color>
+    <color name="on_accent">#052A19</color>
+    <color name="badge_bg">#292BD97C</color>
+    <color name="ripple_light">#1FFFFFFF</color>
+    <color name="ripple_dark">#33000000</color>
+
+    <color name="launcher_bg">#0E1116</color>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Use the whole screen, including the area beside a camera cutout. -->
+    <style name="Theme.Reflex.Game">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Activity</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
