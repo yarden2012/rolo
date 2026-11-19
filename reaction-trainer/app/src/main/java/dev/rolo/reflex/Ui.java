@@ -149,6 +149,7 @@ public final class Ui {
             if (i % 2 == 0) {
                 row = new LinearLayout(c);
                 row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setBaselineAligned(false);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 if (i > 0) lp.topMargin = gap;
@@ -157,7 +158,9 @@ public final class Ui {
             View tile = inflater.inflate(R.layout.item_tile, row, false);
             ((TextView) tile.findViewById(R.id.value)).setText(entries.get(i)[0]);
             ((TextView) tile.findViewById(R.id.label)).setText(entries.get(i)[1]);
-            if (i % 2 == 1) ((LinearLayout.LayoutParams) tile.getLayoutParams()).setMarginStart(gap);
+            LinearLayout.LayoutParams tlp = (LinearLayout.LayoutParams) tile.getLayoutParams();
+            tlp.height = ViewGroup.LayoutParams.MATCH_PARENT; // equal heights even if a label wraps
+            if (i % 2 == 1) tlp.setMarginStart(gap);
             row.addView(tile);
         }
         // An odd tile out keeps half the width, matching the tiles above it.

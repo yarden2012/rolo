@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.res.ColorStateList;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.format.DateUtils;
@@ -97,6 +98,13 @@ public final class StatsActivity extends Activity {
             chip.setSelected(m == mode);
             chip.setTextColor(m == mode ? Ui.TEXT : Ui.TEXT2);
         }
+        final TextView selected = chips.get(mode);
+        selected.post(new Runnable() {
+            @Override
+            public void run() {
+                selected.requestRectangleOnScreen(new Rect(0, 0, selected.getWidth(), selected.getHeight()), false);
+            }
+        });
 
         List<Session> history = HistoryStore.get(this).forMode(mode);
         TextView empty = findViewById(R.id.empty);

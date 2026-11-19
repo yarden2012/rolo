@@ -12,7 +12,7 @@
     <string name="clear">Clear</string>
 
     <string name="section_modes">Training modes</string>
-    <string name="summary_rounds">Rounds played</string>
+    <string name="summary_rounds">Rounds</string>
     <string name="summary_fastest">Fastest tap</string>
     <string name="summary_streak">Day streak</string>
 

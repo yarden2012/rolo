@@ -86,6 +86,7 @@
             android:drawableStart="@drawable/ic_chart"
             android:drawablePadding="10dp"
             android:drawableTint="@color/text2"
+            android:gravity="start|center_vertical"
             android:text="@string/statistics" />
     </LinearLayout>
 </ScrollView>

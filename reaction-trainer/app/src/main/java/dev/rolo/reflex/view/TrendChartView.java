@@ -95,6 +95,10 @@ public final class TrendChartView extends View {
             lo = mid - 10;
             hi = mid + 10;
         }
+        // Room under the lowest point for the "Best" label, and over the top for the latest.
+        double span = hi - lo;
+        lo -= span * 0.25;
+        hi += span * 0.08;
         yStep = Stats.niceStep((hi - lo) / 3);
         yMin = Math.max(0, Math.floor(lo / yStep) * yStep);
         yMax = Math.ceil(hi / yStep) * yStep;
@@ -157,19 +161,22 @@ public final class TrendChartView extends View {
         }
         if (data.length > 1) c.drawPath(path, line);
 
-        // Label only the latest round and the best one.
+        // Label only the latest round (above its dot) and the best one (below its dot: it's the
+        // lowest point, so the line never runs underneath it and the two labels can't collide).
         int last = data.length - 1;
         int best = -1;
         for (int i = 0; i < data.length; i++) {
             if (!data[i].qualifies()) continue;
             if (best < 0 || data[i].mean() < data[best].mean()) best = i;
         }
-        if (best >= 0 && best != last) {
+        if (best >= 0) {
             drawDot(c, best, 4 * dp);
-            label(c, best, ctx.getString(R.string.chart_best, Math.round(data[best].mean())), false);
+            label(c, best, ctx.getString(R.string.chart_best, Math.round(data[best].mean())), best == last, true);
         }
-        drawDot(c, last, 4 * dp);
-        label(c, last, String.valueOf(Math.round(data[last].mean())), true);
+        if (best != last) {
+            drawDot(c, last, 4 * dp);
+            label(c, last, String.valueOf(Math.round(data[last].mean())), true, false);
+        }
 
         if (touched >= 0 && touched < data.length) drawTooltip(c, touched);
     }
@@ -183,15 +190,14 @@ public final class TrendChartView extends View {
         c.drawCircle(x, y, r, dot);
     }
 
-    private void label(Canvas c, int i, String s, boolean primary) {
+    private void label(Canvas c, int i, String s, boolean primary, boolean below) {
         float x = xAt(i);
         float y = yAt(data[i].mean());
         axis.setColor(primary ? Ui.TEXT : Ui.TEXT2);
         float w = axis.measureText(s);
         axis.setTextAlign(Paint.Align.CENTER);
         float lx = Math.max(plot.left + w / 2, Math.min(getWidth() - w / 2, x));
-        float above = y - Ui.dp(getContext(), 10);
-        float ly = above - axis.getTextSize() < 0 ? y + Ui.dp(getContext(), 18) : above;
+        float ly = below ? y + Ui.dp(getContext(), 8) + axis.getTextSize() : y - Ui.dp(getContext(), 10);
         c.drawText(s, lx, ly, axis);
         axis.setColor(Ui.TEXT3);
     }

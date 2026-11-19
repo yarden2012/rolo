@@ -23,6 +23,8 @@ public final class TrialBarsView extends View {
     private int color = Ui.GO;
     private double mean = Double.NaN;
     private int touched = -1;
+    /** Right edge of the bars; the average's label sits in the gutter beyond it. */
+    private float barsRight;
 
     private final Paint bar = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -63,7 +65,10 @@ public final class TrialBarsView extends View {
         float top = Ui.dp(getContext(), 20);
         float bottom = getHeight() - 1;
         float left = 0;
-        float right = getWidth();
+        String avg = getContext().getString(R.string.bars_avg, Math.round(mean));
+        label.setTextAlign(Paint.Align.LEFT);
+        float right = getWidth() - label.measureText(avg) - Ui.dp(getContext(), 8);
+        barsRight = right;
 
         int max = Stats.max(times);
         double step = Stats.niceStep(max / 3.0);
@@ -89,14 +94,14 @@ public final class TrialBarsView extends View {
             c.drawPath(path, bar);
         }
 
-        // Average hairline, labelled at the right end.
+        // Average hairline across the bars, labelled in the gutter at its right end.
         float my = bottom - (float) (mean / yMax) * (bottom - top);
         line.setColor(Ui.TEXT3);
         c.drawLine(left, my, right, my, line);
         label.setColor(Ui.TEXT2);
-        label.setTextAlign(Paint.Align.RIGHT);
-        String avg = getContext().getString(R.string.bars_avg, Math.round(mean));
-        float avgW = label.measureText(avg);
+        label.setTextAlign(Paint.Align.LEFT);
+        Paint.FontMetrics fm = label.getFontMetrics();
+        c.drawText(avg, right + Ui.dp(getContext(), 6), my - (fm.ascent + fm.descent) / 2f, label);
 
         // Value label at the cap of the best (or touched) column.
         float lcx = left + slot * (labelIndex + 0.5f);
@@ -105,10 +110,6 @@ public final class TrialBarsView extends View {
         float vw = label.measureText(value);
         float lx = Math.max(left + vw / 2f, Math.min(right - vw / 2f, lcx));
         float ly = bottom - lh - Ui.dp(getContext(), 5);
-        boolean clashes = lx + vw / 2f > right - avgW - Ui.dp(getContext(), 6)
-                && Math.abs(ly - (my - Ui.dp(getContext(), 4))) < label.getTextSize();
-        c.drawText(avg, right, clashes ? my + label.getTextSize() + Ui.dp(getContext(), 2)
-                : my - Ui.dp(getContext(), 4), label);
 
         label.setColor(Ui.TEXT);
         label.setTextAlign(Paint.Align.CENTER);
@@ -126,7 +127,7 @@ public final class TrialBarsView extends View {
         if (times.length == 0) return false;
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
-            float slot = (float) getWidth() / times.length;
+            float slot = (barsRight > 0 ? barsRight : getWidth()) / times.length;
             int i = (int) (e.getX() / slot);
             touched = Math.max(0, Math.min(times.length - 1, i));
             if (action == MotionEvent.ACTION_MOVE) getParent().requestDisallowInterceptTouchEvent(true);

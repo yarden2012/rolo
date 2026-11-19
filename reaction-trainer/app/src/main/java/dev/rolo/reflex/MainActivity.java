@@ -7,6 +7,7 @@ import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -105,13 +106,16 @@ public final class MainActivity extends Activity {
         container.removeAllViews();
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setBaselineAligned(false);
         container.addView(row);
         int gap = Math.round(Ui.dp(this, 10));
         for (int i = 0; i < entries.size(); i++) {
             View tile = getLayoutInflater().inflate(R.layout.item_tile, row, false);
             ((TextView) tile.findViewById(R.id.value)).setText(entries.get(i)[0]);
             ((TextView) tile.findViewById(R.id.label)).setText(entries.get(i)[1]);
-            if (i > 0) ((LinearLayout.LayoutParams) tile.getLayoutParams()).setMarginStart(gap);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) tile.getLayoutParams();
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT; // equal heights even if a label wraps
+            if (i > 0) lp.setMarginStart(gap);
             row.addView(tile);
         }
     }
