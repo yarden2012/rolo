@@ -67,6 +67,9 @@
     <string name="too_soon">Too soon!</string>
     <string name="too_soon_body">Wait for green before you tap.</string>
     <string name="too_soon_sound">Wait for the beep before you tap.</string>
+    <string name="too_fast">Too fast!</string>
+    <string name="too_fast_body">You tapped %d ms after green. Nobody can react that quickly, so the tap began before you saw it. As in sprint starts, under 100 ms counts as a jump.</string>
+    <string name="too_fast_body_sound">You tapped %d ms after the beep. Nobody can react that quickly, so the tap began before you heard it. As in sprint starts, under 100 ms counts as a jump.</string>
     <string name="sound_listen">Listen…</string>
     <string name="sound_listen_body">Tap the moment you hear the beep</string>
     <string name="sound_volume_off">Your media volume is off. Turn it up to hear the beep.</string>
@@ -89,6 +92,7 @@
     <string name="fb_wrong_pad">Wrong pad</string>
     <string name="fb_too_slow">Too slow</string>
     <string name="fb_too_early_pad">Too early — wait for a pad to light up</string>
+    <string name="fb_too_fast">Too fast: %d ms is a guess</string>
     <string name="fb_hold">Good hold</string>
     <string name="fb_commission">Don\'t tap red squares</string>
     <string name="fb_omission">Too slow — tap on green</string>

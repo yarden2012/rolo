@@ -100,10 +100,37 @@ public class DrillTest {
         assertFalse(pixel(5, view.getHeight() / 2) == Ui.GO);
         tapCenter(); // too soon
         assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
+        assertTrue(said().startsWith("Too soon!"));
         idle(300);
         tapCenter(); // try again
         waitFor(green(), 6000);
         idle(300);
+        tapCenter();
+        idle(300);
+        tapCenter();
+        assertNotNull(result);
+        assertEquals(1, result.falseStarts);
+        assertEquals(1, result.count());
+    }
+
+    @Test
+    public void simpleTapUnder100msAfterGreenIsTooFastAndSaysHowFast() {
+        // The green really was up, so "wait for green" would be wrong: say it was too fast,
+        // with the time, and still don't count it.
+        start(Mode.SIMPLE, 1);
+        tapCenter();
+        waitFor(green(), 6000);
+        idle(60); // ~43 ms after the earliest the green could be on screen
+        tapCenter();
+        assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
+        String said = said();
+        assertTrue(said, said.startsWith("Too fast!"));
+        int ms = Integer.parseInt(said.replaceAll("^\\D*(\\d+) ms.*$", "$1"));
+        assertTrue("reported " + ms, ms >= 35 && ms <= 55);
+        idle(300);
+        tapCenter(); // try again
+        waitFor(green(), 6000);
+        idle(250);
         tapCenter();
         idle(300);
         tapCenter();
@@ -236,6 +263,7 @@ public class DrillTest {
         idle(10); // requested, but still 30 ms from the speaker
         tapCenter();
         assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
+        assertTrue(said().startsWith("Too soon!"));
         idle(300);
         tapCenter(); // try again
         cue.playedAtMs = -1;
@@ -247,6 +275,17 @@ public class DrillTest {
         assertNotNull(result);
         assertEquals(1, result.falseStarts);
         assertEquals(1, result.count());
+    }
+
+    @Test
+    public void soundTapUnder100msAfterTheBeepIsTooFast() {
+        startSound(1);
+        tapCenter();
+        waitForBeep();
+        idle(90); // heard 40 ms in, so this tap comes ~50 ms after the beep
+        tapCenter();
+        String said = said();
+        assertTrue(said, said.startsWith("Too fast!") && said.contains("after the beep"));
     }
 
     @Test
@@ -487,6 +526,12 @@ public class DrillTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /** What the drill's screen currently says (its accessibility description). */
+    private String said() {
+        CharSequence d = view.getContentDescription();
+        return d == null ? "" : d.toString();
+    }
 
     private interface Check {
         boolean ok();

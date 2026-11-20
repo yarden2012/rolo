@@ -32,6 +32,13 @@ final class SimpleView extends TrainerView {
     private long onsetNanos;
     private long shownAtNanos;
     private int lastMs;
+    /**
+     * For a false start: how long after the cue the tap came, or -1 if it came before the cue
+     * could be seen or heard at all. Taps from 0 to 99 ms after it are "too fast" rather than
+     * "too soon": the cue was really there, but nobody can react to it that quickly, so the
+     * tap must have started before it.
+     */
+    private int jumpMs = -1;
 
     private final Runnable timeout = new Runnable() {
         @Override
@@ -67,6 +74,7 @@ final class SimpleView extends TrainerView {
                 cancelPending();
                 falseStarts++;
                 buzz();
+                jumpMs = -1;
                 show(State.TOO_SOON);
                 break;
             case GO: {
@@ -77,6 +85,7 @@ final class SimpleView extends TrainerView {
                 if (ms < MIN_REACTION_MS) {
                     falseStarts++;
                     buzz();
+                    jumpMs = Math.max(-1, ms);
                     show(State.TOO_SOON);
                 } else {
                     recordTime(ms);
@@ -139,7 +148,35 @@ final class SimpleView extends TrainerView {
     private void show(State s) {
         state = s;
         shownAtNanos = nowNanos();
+        setContentDescription(describe(s));
         invalidate();
+    }
+
+    /** What the screen says, for TalkBack (and tests). Never called when the beep plays. */
+    private String describe(State s) {
+        switch (s) {
+            case WAITING:
+                return str(cue != null ? R.string.sound_listen : R.string.simple_wait);
+            case RESULT:
+                return str(R.string.fb_ms, lastMs);
+            case TOO_SOON:
+                return tooSoonTitle() + " " + tooSoonBody();
+            case MISSED:
+                return str(R.string.missed);
+            case PAUSED:
+                return str(R.string.paused);
+            default:
+                return str(mode.title);
+        }
+    }
+
+    private String tooSoonTitle() {
+        return str(jumpMs >= 0 ? R.string.too_fast : R.string.too_soon);
+    }
+
+    private String tooSoonBody() {
+        if (jumpMs >= 0) return str(cue != null ? R.string.too_fast_body_sound : R.string.too_fast_body, jumpMs);
+        return str(cue != null ? R.string.too_soon_sound : R.string.too_soon_body);
     }
 
     @Override
@@ -213,15 +250,17 @@ final class SimpleView extends TrainerView {
                 drawContinueHint(c);
                 break;
             }
-            case TOO_SOON:
+            case TOO_SOON: {
                 c.drawColor(Ui.WARN_BG);
                 setText(40, Ui.TEXT, Ui.BLACK);
-                drawCentered(c, str(R.string.too_soon), cx, cy - dp(20));
+                drawCentered(c, tooSoonTitle(), cx, cy - dp(20));
                 setText(17, Ui.TEXT2, Ui.REGULAR);
-                drawCentered(c, str(cue != null ? R.string.too_soon_sound : R.string.too_soon_body), cx, cy + dp(24));
+                StaticLayout body = wrap(tooSoonBody(), Math.min(getWidth() - safeLeft - safeRight - dp(48), dp(340)));
+                drawLayout(c, body, cx, cy + dp(12));
                 setText(15, Ui.TEXT2, Ui.REGULAR); // the muted grey is too dim on amber
                 drawCentered(c, str(R.string.try_again), cx, getHeight() - safeBottom - dp(56));
                 break;
+            }
             case MISSED:
                 c.drawColor(Ui.BG);
                 setText(40, Ui.TEXT, Ui.BLACK);
