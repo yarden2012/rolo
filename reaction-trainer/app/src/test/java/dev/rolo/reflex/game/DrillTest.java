@@ -114,9 +114,8 @@ public class DrillTest {
     }
 
     @Test
-    public void simpleTapUnder100msAfterGreenIsTooFastAndSaysHowFast() {
-        // The green really was up, so "wait for green" would be wrong: say it was too fast,
-        // with the time, and still don't count it.
+    public void simpleTapUnder100msAfterGreenCounts() {
+        // Any tap after the green is a reaction, however fast.
         start(Mode.SIMPLE, 1);
         tapCenter();
         waitFor(green(), 6000);
@@ -124,21 +123,13 @@ public class DrillTest {
         // earlier, and the onset is that frame's vsync plus one refresh.
         idle(60);
         tapCenter();
-        assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
-        String said = said();
-        assertTrue(said, said.startsWith("Too fast!"));
-        int ms = Integer.parseInt(said.replaceAll("^\\D*(\\d+) ms.*$", "$1"));
-        assertTrue("reported " + ms, ms >= 40 && ms <= 65);
+        assertFalse("not a false start", pixel(5, view.getHeight() / 2) == Ui.WARN_BG);
         idle(300);
-        tapCenter(); // try again
-        waitFor(green(), 6000);
-        idle(250);
-        tapCenter();
-        idle(300);
-        tapCenter();
+        tapCenter(); // results
         assertNotNull(result);
-        assertEquals(1, result.falseStarts);
+        assertEquals(0, result.falseStarts);
         assertEquals(1, result.count());
+        assertTrue("time " + result.time(0), result.time(0) >= 40 && result.time(0) <= 65);
     }
 
     @Test
@@ -280,14 +271,18 @@ public class DrillTest {
     }
 
     @Test
-    public void soundTapUnder100msAfterTheBeepIsTooFast() {
+    public void soundTapUnder100msAfterTheBeepCounts() {
         startSound(1);
         tapCenter();
         waitForBeep();
         idle(90); // heard 40 ms in, so this tap comes ~50 ms after the beep
         tapCenter();
-        String said = said();
-        assertTrue(said, said.startsWith("Too fast!") && said.contains("after the beep"));
+        idle(300);
+        tapCenter(); // results
+        assertNotNull(result);
+        assertEquals(0, result.falseStarts);
+        assertEquals(1, result.count());
+        assertTrue("time " + result.time(0), result.time(0) >= 50 && result.time(0) <= 55);
     }
 
     @Test

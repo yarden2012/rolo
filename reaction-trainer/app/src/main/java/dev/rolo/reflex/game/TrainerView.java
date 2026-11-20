@@ -45,8 +45,6 @@ public abstract class TrainerView extends View {
         void onRoundFinished(Session session);
     }
 
-    /** Responses faster than this after the stimulus are anticipations, not reactions. */
-    protected static final int MIN_REACTION_MS = 100;
 
     protected final Mode mode;
     protected final int totalTrials;

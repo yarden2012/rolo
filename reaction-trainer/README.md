@@ -23,11 +23,8 @@ Settings: round length (short, standard or long) and vibration on tap.
 
 ### Fair scoring
 
-- **False starts don't count as reactions.** Tapping before the stimulus is *too soon*.
-  Tapping less than 100 ms after it is *too fast*: the stimulus really was there, but nobody
-  can react that quickly (the best manage about 150 ms), so the tap began before it. That's
-  the same rule sprint starts use, and the screen shows how fast the tap was. Either way the
-  trial runs again.
+- **Only taps before the cue are false starts.** Tapping before the green, the beep or the
+  shape is *too soon*, and that trial runs again. Any tap after the cue counts, however fast.
 - **Choice taps count for the pad you went for.** Each pad owns its quarter of the grid,
   gaps and a margin included, so a finger landing just beside the lit pad still counts.
   Touches well away from the pads (a palm, the top bar) are ignored rather than scored.

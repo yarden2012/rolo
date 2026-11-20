@@ -32,13 +32,6 @@ final class SimpleView extends TrainerView {
     private long onsetNanos;
     private long shownAtNanos;
     private int lastMs;
-    /**
-     * For a false start: how long after the cue the tap came, or -1 if it came before the cue
-     * could be seen or heard at all. Taps from 0 to 99 ms after it are "too fast" rather than
-     * "too soon": the cue was really there, but nobody can react to it that quickly, so the
-     * tap must have started before it.
-     */
-    private int jumpMs = -1;
 
     private final Runnable timeout = new Runnable() {
         @Override
@@ -74,18 +67,17 @@ final class SimpleView extends TrainerView {
                 cancelPending();
                 falseStarts++;
                 buzz();
-                jumpMs = -1;
                 show(State.TOO_SOON);
                 break;
             case GO: {
                 handler.removeCallbacks(timeout);
                 long onset = cue != null ? cue.onsetNanos() : onsetNanos;
-                // A tap before the beep was even sent to the speaker is an anticipation too.
+                // Only a tap before the cue could be seen or heard is too soon (including one
+                // before the beep was even sent to the speaker). Any tap after it counts.
                 int ms = onset < 0 ? -1 : elapsedMs(onset, t);
-                if (ms < MIN_REACTION_MS) {
+                if (ms < 0) {
                     falseStarts++;
                     buzz();
-                    jumpMs = Math.max(-1, ms);
                     show(State.TOO_SOON);
                 } else {
                     recordTime(ms);
@@ -171,11 +163,10 @@ final class SimpleView extends TrainerView {
     }
 
     private String tooSoonTitle() {
-        return str(jumpMs >= 0 ? R.string.too_fast : R.string.too_soon);
+        return str(R.string.too_soon);
     }
 
     private String tooSoonBody() {
-        if (jumpMs >= 0) return str(cue != null ? R.string.too_fast_body_sound : R.string.too_fast_body, jumpMs);
         return str(cue != null ? R.string.too_soon_sound : R.string.too_soon_body);
     }
 

@@ -20,8 +20,7 @@ final class GoNoGoView extends TrainerView {
 
     private enum State { INTRO, FIXATION, STIMULUS, FEEDBACK, PAUSED }
 
-    /** EARLY: tapped before the shape. FAST: after it, but under 100 ms, so it began before. */
-    private enum Outcome { HIT, HOLD, COMMISSION, OMISSION, EARLY, FAST }
+    private enum Outcome { HIT, HOLD, COMMISSION, OMISSION, EARLY }
 
     private final boolean[] sequence;
     private int index;
@@ -92,11 +91,11 @@ final class GoNoGoView extends TrainerView {
             case STIMULUS: {
                 handler.removeCallbacks(windowEnd);
                 int ms = elapsedMs(onsetNanos, t);
-                if (ms < MIN_REACTION_MS) {
+                if (ms < 0) {
+                    // Before the shape could be on screen: too early, and the trial runs again.
                     falseStarts++;
                     buzz();
-                    lastMs = ms;
-                    feedback(ms >= 0 ? Outcome.FAST : Outcome.EARLY); // the same trial runs again
+                    feedback(Outcome.EARLY);
                     return;
                 }
                 boolean go = sequence[index];
@@ -122,7 +121,7 @@ final class GoNoGoView extends TrainerView {
     private void feedback(Outcome o) {
         state = State.FEEDBACK;
         outcome = o;
-        handler.postDelayed(next, o == Outcome.EARLY || o == Outcome.FAST ? EARLY_FEEDBACK_MS : FEEDBACK_MS);
+        handler.postDelayed(next, o == Outcome.EARLY ? EARLY_FEEDBACK_MS : FEEDBACK_MS);
         invalidate();
     }
 
@@ -192,9 +191,6 @@ final class GoNoGoView extends TrainerView {
                     break;
                 case OMISSION:
                     message = str(R.string.fb_omission);
-                    break;
-                case FAST:
-                    message = str(R.string.fb_too_fast, lastMs);
                     break;
                 case EARLY:
                 default:

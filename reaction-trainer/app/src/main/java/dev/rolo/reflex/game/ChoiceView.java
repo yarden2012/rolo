@@ -16,8 +16,7 @@ final class ChoiceView extends TrainerView {
 
     private enum State { INTRO, WAITING, LIT, FEEDBACK, PAUSED }
 
-    /** EARLY: tapped before any pad lit. FAST: after, but under 100 ms, so it began before. */
-    private enum Outcome { HIT, WRONG, MISS, EARLY, FAST }
+    private enum Outcome { HIT, WRONG, MISS, EARLY }
 
     private State state = State.INTRO;
     private Outcome outcome;
@@ -111,12 +110,11 @@ final class ChoiceView extends TrainerView {
                 if (hit < 0) return; // a stray touch, not an answer
                 handler.removeCallbacks(timeout);
                 int ms = elapsedMs(onsetNanos, t);
-                if (ms < MIN_REACTION_MS) {
+                if (ms < 0) {
+                    // Before the pad could be on screen: too early, and the trial runs again.
                     falseStarts++;
                     buzz();
-                    lastMs = ms;
-                    // An anticipation doesn't use up the trial.
-                    feedback(ms >= 0 ? Outcome.FAST : Outcome.EARLY, -1);
+                    feedback(Outcome.EARLY, -1);
                     return;
                 }
                 trialsDone++;
@@ -142,9 +140,9 @@ final class ChoiceView extends TrainerView {
         state = State.FEEDBACK;
         outcome = o;
         tapped = pad;
-        boolean jump = o == Outcome.EARLY || o == Outcome.FAST;
-        if (jump) lit = -1;
-        handler.postDelayed(next, jump ? EARLY_FEEDBACK_MS : FEEDBACK_MS);
+        boolean early = o == Outcome.EARLY;
+        if (early) lit = -1;
+        handler.postDelayed(next, early ? EARLY_FEEDBACK_MS : FEEDBACK_MS);
         invalidate();
     }
 
@@ -243,9 +241,6 @@ final class ChoiceView extends TrainerView {
                     break;
                 case EARLY:
                     message = str(R.string.fb_too_early_pad);
-                    break;
-                case FAST:
-                    message = str(R.string.fb_too_fast, lastMs);
                     break;
                 default:
                     break;
