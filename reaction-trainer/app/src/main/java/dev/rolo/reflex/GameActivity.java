@@ -3,6 +3,7 @@ package dev.rolo.reflex;
 import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.Drawable;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,6 +39,7 @@ public final class GameActivity extends Activity implements TrainerView.Listener
         root = new FrameLayout(this);
         root.setBackgroundColor(Ui.BG);
         setContentView(root);
+        setVolumeControlStream(AudioManager.STREAM_MUSIC); // volume keys set the beep's volume
         Ui.immersive(this);
         startRound();
     }
@@ -151,6 +153,7 @@ public final class GameActivity extends Activity implements TrainerView.Listener
         String accuracy = Ui.percent(this, s.attempts() == 0 ? Double.NaN : s.accuracy());
         switch (mode) {
             case SIMPLE:
+            case SOUND:
                 t.add(new String[] {best, getString(R.string.tile_best)});
                 t.add(new String[] {median, getString(R.string.tile_median)});
                 t.add(new String[] {consistency, getString(R.string.tile_consistency)});

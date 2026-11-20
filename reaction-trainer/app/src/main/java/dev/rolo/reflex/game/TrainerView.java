@@ -95,9 +95,11 @@ public abstract class TrainerView extends View {
                 return new ChoiceView(context, mode, trials);
             case AIM:
                 return new AimView(context, mode, trials);
+            case SOUND:
+                return new SimpleView(context, mode, trials, new ToneCue());
             case SIMPLE:
             default:
-                return new SimpleView(context, mode, trials);
+                return new SimpleView(context, mode, trials, null);
         }
     }
 

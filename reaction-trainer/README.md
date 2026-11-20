@@ -8,6 +8,7 @@ the app asks for no permissions at all, and your history stays on the phone.
 | Drill | What you do | What it trains |
 |---|---|---|
 | **Tap reaction** | The screen turns from dark red to bright green. Tap. | Simple reaction time |
+| **Sound reaction** | A beep plays while the screen stays exactly the same. Tap. | Reaction to sound |
 | **Go / No-Go** | Tap green circles, hold back on red squares (25% of trials). | Reacting fast *and* stopping yourself |
 | **Choice reaction** | One of four pads lights up. Tap that one. | Choice reaction time |
 | **Aim** | Targets pop up around the screen. Tap each one. | Reaction plus hand–eye speed |
@@ -42,6 +43,14 @@ the onset is taken as *vsync + one refresh period*. The response is the touch ev
 timestamp (`MotionEvent.getEventTimeNanos()` on Android 14+), which is when the touchscreen
 reported your finger, not when the app got around to handling it. Both use the same
 monotonic clock.
+
+**Sound reaction** has to deal with audio output delay, which ranges from about 10 ms on a
+phone speaker to over 200 ms on Bluetooth. Counting that delay as your reaction time would be
+unfair. Instead, the app keeps a low-latency audio stream playing silence for the whole round,
+writes the beep at a known sample, and uses `AudioTrack.getTimestamp()` to find when that
+sample actually reached the output. Your time starts then. Bluetooth headsets don't always
+report their extra delay, so the start card warns you when one is connected. It also warns
+you if media volume is off. The volume keys control the beep's volume during a round.
 
 Every phone adds some display and touchscreen latency that no app can see, so times can
 read a little slower than a lab button press. Compare yourself with yourself, on the same device.
@@ -84,7 +93,8 @@ app/src/main/java/dev/rolo/reflex/
   MainActivity, GameActivity, StatsActivity   screens
   Mode, Session, Stats, HistoryStore, Prefs    model, statistics, storage (one JSON file)
   game/TrainerView                             timing, input, scoring, shared drawing
-  game/SimpleView, GoNoGoView, ChoiceView, AimView
+  game/SimpleView, GoNoGoView, ChoiceView, AimView   (SimpleView runs Tap and Sound reaction)
+  game/ToneCue                                 the timed beep (behind AudioCue, so tests can fake it)
   view/TrialBarsView, TrendChartView           charts
 ```
 

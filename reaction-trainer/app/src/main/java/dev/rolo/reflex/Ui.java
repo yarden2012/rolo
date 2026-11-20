@@ -36,6 +36,7 @@ public final class Ui {
     public static final int STOP = 0xFFFF5A5F;
     public static final int WAIT = 0xFF57161C;
     public static final int WARN_BG = 0xFF4A3410;
+    public static final int WARN = 0xFFFFB224;
     public static final int CHOICE_LIT = 0xFF6AAAFF;
     public static final int AIM_TARGET = 0xFFFF7A45;
 

@@ -2,18 +2,31 @@ package dev.rolo.reflex.game;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import android.text.StaticLayout;
+import android.view.KeyEvent;
 
 import dev.rolo.reflex.Mode;
 import dev.rolo.reflex.R;
 import dev.rolo.reflex.Ui;
 
-/** Classic simple reaction: the whole screen turns from dark red to bright green; tap. */
+/**
+ * Simple reaction to a single cue. Tap reaction: the whole screen turns from dark red to bright
+ * green. Sound reaction: a beep, while the screen stays exactly as it was.
+ */
 final class SimpleView extends TrainerView {
     private static final int TIMEOUT_MS = 2500;
     /** Result screens ignore taps this soon after appearing, so a double tap can't skip them. */
     private static final long RESULT_GUARD_NANOS = 250_000_000L;
+    /** People react to sound roughly this much faster than to sight, so ratings shift by it. */
+    private static final int AUDIO_ADVANTAGE_MS = 40;
 
     private enum State { INTRO, WAITING, GO, RESULT, TOO_SOON, MISSED, PAUSED }
+
+    /** The beep for Sound reaction; null for Tap reaction. */
+    private final AudioCue cue;
+    private boolean audioFailed;
+    private StaticLayout introWarning;
 
     private State state = State.INTRO;
     private long onsetNanos;
@@ -29,8 +42,18 @@ final class SimpleView extends TrainerView {
         }
     };
 
-    SimpleView(Context context, Mode mode, int trials) {
+    private final Runnable beep = new Runnable() {
+        @Override
+        public void run() {
+            cue.play();
+            state = State.GO; // deliberately no redraw: the screen must not change
+            handler.postDelayed(timeout, TIMEOUT_MS);
+        }
+    };
+
+    SimpleView(Context context, Mode mode, int trials, AudioCue cue) {
         super(context, mode, trials);
+        this.cue = cue;
     }
 
     private int trialsDone() {
@@ -48,7 +71,9 @@ final class SimpleView extends TrainerView {
                 break;
             case GO: {
                 handler.removeCallbacks(timeout);
-                int ms = elapsedMs(onsetNanos, t);
+                long onset = cue != null ? cue.onsetNanos() : onsetNanos;
+                // A tap before the beep was even sent to the speaker is an anticipation too.
+                int ms = onset < 0 ? -1 : elapsedMs(onset, t);
                 if (ms < MIN_REACTION_MS) {
                     falseStarts++;
                     buzz();
@@ -77,7 +102,18 @@ final class SimpleView extends TrainerView {
 
     private void advance() {
         if (trialsDone() >= totalTrials) {
+            if (cue != null) cue.release();
             finishRound();
+            return;
+        }
+        if (cue != null) {
+            audioFailed = !cue.start();
+            if (audioFailed) {
+                show(State.INTRO); // explains that sound isn't available
+                return;
+            }
+            show(State.WAITING);
+            handler.postDelayed(beep, foreperiodMs());
             return;
         }
         show(State.WAITING);
@@ -108,8 +144,34 @@ final class SimpleView extends TrainerView {
 
     @Override
     protected void onPause() {
+        if (cue != null) cue.release(); // reopened when the round resumes
         if (state == State.WAITING || state == State.GO) state = State.PAUSED;
     }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        // Open the stream while the start card is up, so it's warmed up by the first beep.
+        if (cue != null) audioFailed = !cue.start();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (cue != null) cue.release();
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        // The volume keys change media volume here; refresh the "volume is off" warning.
+        if (cue != null && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE)) {
+            postInvalidateDelayed(150);
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    // ---------------------------------------------------------------- drawing
 
     @Override
     protected void onDraw(Canvas c) {
@@ -121,11 +183,19 @@ final class SimpleView extends TrainerView {
                 drawIntro(c);
                 return;
             case WAITING:
+                if (cue != null) {
+                    drawListening(c, cx, cy);
+                    break;
+                }
                 c.drawColor(Ui.WAIT);
                 setText(30, Ui.TEXT, Ui.BOLD);
                 drawCentered(c, str(R.string.simple_wait), cx, cy);
                 break;
             case GO:
+                if (cue != null) {
+                    drawListening(c, cx, cy); // identical to waiting: the beep is the only cue
+                    break;
+                }
                 c.drawColor(Ui.GO);
                 setText(80, Ui.ON_GO, Ui.BLACK);
                 drawCentered(c, str(R.string.simple_tap), cx, cy);
@@ -138,7 +208,8 @@ final class SimpleView extends TrainerView {
                 drawCentered(c, str(R.string.unit_ms), cx, cy + dp(28));
                 boolean best = recordedCount() > 1 && lastMs == recordedBest();
                 setText(18, best ? Ui.GO : Ui.TEXT, Ui.MEDIUM);
-                drawCentered(c, best ? str(R.string.best_of_round) : str(rating(lastMs)), cx, cy + dp(70));
+                int rating = rating(cue != null ? lastMs + AUDIO_ADVANTAGE_MS : lastMs);
+                drawCentered(c, best ? str(R.string.best_of_round) : str(rating), cx, cy + dp(70));
                 drawContinueHint(c);
                 break;
             }
@@ -147,7 +218,7 @@ final class SimpleView extends TrainerView {
                 setText(40, Ui.TEXT, Ui.BLACK);
                 drawCentered(c, str(R.string.too_soon), cx, cy - dp(20));
                 setText(17, Ui.TEXT2, Ui.REGULAR);
-                drawCentered(c, str(R.string.too_soon_body), cx, cy + dp(24));
+                drawCentered(c, str(cue != null ? R.string.too_soon_sound : R.string.too_soon_body), cx, cy + dp(24));
                 setText(15, Ui.TEXT2, Ui.REGULAR); // the muted grey is too dim on amber
                 drawCentered(c, str(R.string.try_again), cx, getHeight() - safeBottom - dp(56));
                 break;
@@ -165,6 +236,53 @@ final class SimpleView extends TrainerView {
                 break;
         }
         drawHud(c, trialsDone(), Ui.TEXT2);
+    }
+
+    /** Sound reaction's screen while waiting, before and after the beep alike. */
+    private void drawListening(Canvas c, float cx, float cy) {
+        c.drawColor(Ui.BG);
+        Drawable icon = getContext().getDrawable(mode.icon);
+        if (icon != null) {
+            int half = Math.round(dp(28));
+            icon = icon.mutate();
+            icon.setTint(Ui.TEXT3);
+            icon.setBounds(Math.round(cx) - half, Math.round(cy - dp(84)) - half,
+                    Math.round(cx) + half, Math.round(cy - dp(84)) + half);
+            icon.draw(c);
+        }
+        setText(30, Ui.TEXT, Ui.BOLD);
+        drawCentered(c, str(R.string.sound_listen), cx, cy);
+        setText(16, Ui.TEXT2, Ui.REGULAR);
+        drawCentered(c, str(R.string.sound_listen_body), cx, cy + dp(36));
+        if (ToneCue.volumeOff(getContext())) {
+            setText(15, Ui.WARN, Ui.MEDIUM);
+            drawCentered(c, str(R.string.sound_volume_off_short), cx, cy + dp(84));
+        }
+    }
+
+    @Override
+    protected float introExtraHeight() {
+        String warning = cue != null ? audioWarning() : null;
+        if (warning == null) {
+            introWarning = null;
+            return 0;
+        }
+        setText(14, Ui.WARN, Ui.REGULAR);
+        introWarning = wrap(warning, Math.min(getWidth() - safeLeft - safeRight - dp(48), dp(360)));
+        return introWarning.getHeight();
+    }
+
+    @Override
+    protected void drawIntroExtra(Canvas c, float cx, float cy) {
+        if (introWarning != null) drawLayout(c, introWarning, cx, cy - introWarning.getHeight() / 2f);
+    }
+
+    /** Anything that would make Sound reaction silent or inaccurate, worst first. */
+    private String audioWarning() {
+        if (audioFailed) return str(R.string.sound_unavailable);
+        if (ToneCue.volumeOff(getContext())) return str(R.string.sound_volume_off);
+        if (ToneCue.bluetoothOutput(getContext())) return str(R.string.sound_bluetooth);
+        return null;
     }
 
     private void drawContinueHint(Canvas c) {

@@ -1,9 +1,11 @@
 package dev.rolo.reflex;
 
-/** The four training drills. The order here is the order they appear on the home screen. */
+/** The training drills. The order here is the order they appear on the home screen. */
 public enum Mode {
     SIMPLE("simple", R.string.mode_simple, R.string.mode_simple_desc, R.string.mode_simple_how,
             R.drawable.ic_mode_simple, 0xFF199E70, 5, 10, 20),
+    SOUND("sound", R.string.mode_sound, R.string.mode_sound_desc, R.string.mode_sound_how,
+            R.drawable.ic_mode_sound, 0xFF9085E9, 5, 10, 20),
     GO_NO_GO("gonogo", R.string.mode_gonogo, R.string.mode_gonogo_desc, R.string.mode_gonogo_how,
             R.drawable.ic_mode_gonogo, 0xFFC98500, 16, 30, 60),
     CHOICE("choice", R.string.mode_choice, R.string.mode_choice_desc, R.string.mode_choice_how,
@@ -38,7 +40,7 @@ public enum Mode {
 
     /** Whether rounds can contain wrong responses, so accuracy is worth reporting. */
     public boolean scoresAccuracy() {
-        return this != SIMPLE;
+        return this != SIMPLE && this != SOUND;
     }
 
     public static Mode fromId(String id) {

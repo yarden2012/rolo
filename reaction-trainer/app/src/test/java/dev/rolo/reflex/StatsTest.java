@@ -66,9 +66,13 @@ public class StatsTest {
     }
 
     @Test
-    public void simpleModeIgnoresAccuracyForBests() {
+    public void simpleAndSoundModesIgnoreAccuracyForBests() {
         Session s = new Session(Mode.SIMPLE, 1, new int[] {250, 260, 270}, 3, 0, 0, 5);
         assertTrue(s.qualifies());
+        Session sound = new Session(Mode.SOUND, 1, new int[] {200, 210, 220}, 3, 0, 0, 5);
+        assertTrue(sound.qualifies());
+        assertFalse(Mode.SOUND.scoresAccuracy());
+        assertEquals(10, Mode.SOUND.trials(Prefs.LENGTH_STANDARD));
     }
 
     @Test

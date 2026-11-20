@@ -44,7 +44,11 @@ public class DrillTest {
 
     private TrainerView start(Mode mode, int trials) {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
-        view = TrainerView.create(activity, mode, trials);
+        return start(activity, TrainerView.create(activity, mode, trials));
+    }
+
+    private TrainerView start(Activity activity, TrainerView v) {
+        view = v;
         view.setHaptics(false);
         view.setListener(new TrainerView.Listener() {
             @Override
@@ -139,6 +143,142 @@ public class DrillTest {
         assertNotNull(result);
         assertEquals(1, result.count());
         assertEquals(0, result.falseStarts);
+    }
+
+    // ------------------------------------------------------------------ Sound reaction
+
+    /** Stands in for the speaker: each beep is heard a fixed 40 ms after it's requested. */
+    private static final class FakeCue implements AudioCue {
+        static final long OUTPUT_DELAY_MS = 40;
+        long playedAtMs = -1;
+        int starts;
+        int releases;
+        boolean open;
+
+        @Override
+        public boolean start() {
+            if (!open) starts++;
+            open = true;
+            return true;
+        }
+
+        @Override
+        public void play() {
+            playedAtMs = SystemClock.uptimeMillis();
+        }
+
+        @Override
+        public long onsetNanos() {
+            return playedAtMs < 0 ? -1 : (playedAtMs + OUTPUT_DELAY_MS) * 1_000_000L;
+        }
+
+        @Override
+        public void release() {
+            if (open) releases++;
+            open = false;
+        }
+    }
+
+    private FakeCue cue;
+
+    private TrainerView startSound(int trials) {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        cue = new FakeCue();
+        return start(activity, new SimpleView(activity, Mode.SOUND, trials, cue));
+    }
+
+    private void waitForBeep() {
+        waitFor(new Check() {
+            @Override
+            public boolean ok() {
+                return cue.playedAtMs >= 0;
+            }
+        }, 6000);
+    }
+
+    @Test
+    public void soundTimesFromWhenTheBeepIsHeardAndTheScreenNeverChanges() {
+        startSound(3);
+        assertTrue("stream opened on the start card", cue.open);
+        tapCenter();
+        int w = view.getWidth(), h = view.getHeight();
+        int[] before = new int[w * h];
+        int[] after = new int[w * h];
+        for (int i = 0; i < 3; i++) {
+            cue.playedAtMs = -1;
+            idle(50);
+            render().getPixels(before, 0, w, 0, 0, w, h);
+            waitForBeep();
+            render().getPixels(after, 0, w, 0, 0, w, h);
+            assertTrue("the screen must not change when the beep plays", java.util.Arrays.equals(before, after));
+            idle(250);
+            tapCenter();
+            idle(300);
+            tapCenter();
+        }
+        assertNotNull(result);
+        assertEquals(3, result.count());
+        for (int i = 0; i < 3; i++) {
+            // 250 ms after the beep was requested, minus the 40 ms it took to reach the speaker.
+            int t = result.time(i);
+            assertTrue("time " + t, t >= 205 && t <= 220);
+        }
+        assertEquals(0, result.falseStarts);
+        assertEquals(Mode.SOUND, result.mode);
+        assertFalse("stream closed when the round ended", cue.open);
+    }
+
+    @Test
+    public void soundTapBeforeTheBeepIsAudibleIsAFalseStart() {
+        startSound(1);
+        tapCenter();
+        waitForBeep();
+        idle(10); // requested, but still 30 ms from the speaker
+        tapCenter();
+        assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
+        idle(300);
+        tapCenter(); // try again
+        cue.playedAtMs = -1;
+        waitForBeep();
+        idle(250);
+        tapCenter();
+        idle(300);
+        tapCenter();
+        assertNotNull(result);
+        assertEquals(1, result.falseStarts);
+        assertEquals(1, result.count());
+    }
+
+    @Test
+    public void soundClosesTheStreamWhilePausedAndReopensIt() {
+        startSound(1);
+        tapCenter();
+        idle(200);
+        view.pause();
+        assertFalse(cue.open);
+        assertEquals(1, cue.releases);
+        idle(6000);
+        assertEquals("no beep while paused", -1, cue.playedAtMs);
+        tapCenter(); // resume
+        assertTrue(cue.open);
+        assertEquals(2, cue.starts);
+    }
+
+    @Test
+    public void beepOnsetMathAndShape() {
+        // A frame 0.1 s after a timestamped frame plays 0.1 s after that timestamp, and one
+        // 0.1 s before it played 0.1 s earlier.
+        assertEquals(1_100_000_000L, ToneCue.onsetFrom(52_800, 48_000, 1_000_000_000L, 48_000));
+        assertEquals(900_000_000L, ToneCue.onsetFrom(43_200, 48_000, 1_000_000_000L, 48_000));
+
+        short[] beep = ToneCue.synthesize(48_000);
+        assertEquals(48_000 * 120 / 1000, beep.length);
+        assertEquals("starts from silence (no click)", 0, beep[0]);
+        int peak = 0;
+        for (short v : beep) peak = Math.max(peak, Math.abs(v));
+        assertTrue("loud enough: " + peak, peak > 20_000);
+        assertTrue("no clipping: " + peak, peak <= Math.round(0.8 * Short.MAX_VALUE));
+        assertTrue("fades out", Math.abs(beep[beep.length - 1]) < 1000);
     }
 
     // ------------------------------------------------------------------ Go / No-Go

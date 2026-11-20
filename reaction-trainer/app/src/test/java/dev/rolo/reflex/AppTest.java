@@ -55,12 +55,13 @@ public class AppTest {
         MainActivity a = Robolectric.buildActivity(MainActivity.class).setup().get();
         LinearLayout modes = a.findViewById(R.id.modes);
         assertEquals(Mode.values().length, modes.getChildCount());
+        View goNoGo = modes.getChildAt(Mode.GO_NO_GO.ordinal());
         assertEquals(a.getString(R.string.mode_gonogo),
-                ((TextView) modes.getChildAt(1).findViewById(R.id.title)).getText().toString());
+                ((TextView) goNoGo.findViewById(R.id.title)).getText().toString());
         assertEquals(a.getString(R.string.mode_meta_new),
-                ((TextView) modes.getChildAt(1).findViewById(R.id.meta)).getText().toString());
+                ((TextView) goNoGo.findViewById(R.id.meta)).getText().toString());
 
-        modes.getChildAt(1).performClick();
+        goNoGo.performClick();
         Intent next = shadowOf(a).getNextStartedActivity();
         assertEquals(GameActivity.class.getName(), next.getComponent().getClassName());
         assertEquals(Mode.GO_NO_GO.id, next.getStringExtra(GameActivity.EXTRA_MODE));
