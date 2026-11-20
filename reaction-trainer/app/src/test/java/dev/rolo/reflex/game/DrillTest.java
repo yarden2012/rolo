@@ -120,13 +120,15 @@ public class DrillTest {
         start(Mode.SIMPLE, 1);
         tapCenter();
         waitFor(green(), 6000);
-        idle(60); // ~43 ms after the earliest the green could be on screen
+        // 60 ms after we saw green; the frame that drew it was up to one refresh (~17 ms)
+        // earlier, and the onset is that frame's vsync plus one refresh.
+        idle(60);
         tapCenter();
         assertEquals(Ui.WARN_BG, pixel(5, view.getHeight() / 2));
         String said = said();
         assertTrue(said, said.startsWith("Too fast!"));
         int ms = Integer.parseInt(said.replaceAll("^\\D*(\\d+) ms.*$", "$1"));
-        assertTrue("reported " + ms, ms >= 35 && ms <= 55);
+        assertTrue("reported " + ms, ms >= 40 && ms <= 65);
         idle(300);
         tapCenter(); // try again
         waitFor(green(), 6000);
