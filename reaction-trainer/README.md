@@ -8,7 +8,7 @@ the app asks for no permissions at all, and your history stays on the phone.
 | Drill | What you do | What it trains |
 |---|---|---|
 | **Tap reaction** | The screen turns from dark red to bright green. Tap. | Simple reaction time |
-| **Sound reaction** | A beep plays while the screen stays exactly the same. Tap. | Reaction to sound |
+| **Sound reaction** | A sound plays while the screen stays exactly the same. Tap. | Reaction to sound |
 | **Go / No-Go** | Tap green circles, hold back on red squares (25% of trials). | Reacting fast *and* stopping yourself |
 | **Choice reaction** | One of four pads lights up. Tap that one. | Choice reaction time |
 | **Aim** | Targets pop up around the screen. Tap each one. | Reaction plus hand–eye speed |
@@ -19,11 +19,15 @@ compare it with your recent average, and a new personal best is called out. The
 **Statistics** screen shows a trend line of your round averages and your recent rounds.
 The home screen shows your fastest tap and your day streak.
 
-Settings: round length (short, standard or long) and vibration on tap.
+Settings: round length (short, standard or long), vibration on tap, and the sound for Sound
+reaction: the built-in beep, or **any audio file on your phone** (picked with the system file
+picker, so no storage permission is needed). The app decodes the file once, trims the silence
+at its start so the timing begins exactly when the sound does, keeps up to 1.5 seconds, evens
+out the volume, and stores only that clip privately. The original file is never touched.
 
 ### Fair scoring
 
-- **Only taps before the cue are false starts.** Tapping before the green, the beep or the
+- **Only taps before the cue are false starts.** Tapping before the green, the sound or the
   shape is *too soon*, and that trial runs again. Any tap after the cue counts, however fast.
 - **Choice taps count for the pad you went for.** Each pad owns its quarter of the grid,
   gaps and a margin included, so a finger landing just beside the lit pad still counts.
@@ -47,10 +51,10 @@ monotonic clock.
 **Sound reaction** has to deal with audio output delay, which ranges from about 10 ms on a
 phone speaker to over 200 ms on Bluetooth. Counting that delay as your reaction time would be
 unfair. Instead, the app keeps a low-latency audio stream playing silence for the whole round,
-writes the beep at a known sample, and uses `AudioTrack.getTimestamp()` to find when that
+writes the sound at a known sample, and uses `AudioTrack.getTimestamp()` to find when that
 sample actually reached the output. Your time starts then. Bluetooth headsets don't always
 report their extra delay, so the start card warns you when one is connected. It also warns
-you if media volume is off. The volume keys control the beep's volume during a round.
+you if media volume is off. The volume keys control its volume during a round.
 
 Every phone adds some display and touchscreen latency that no app can see, so times can
 read a little slower than a lab button press. Compare yourself with yourself, on the same device.
@@ -94,7 +98,8 @@ app/src/main/java/dev/rolo/reflex/
   Mode, Session, Stats, HistoryStore, Prefs    model, statistics, storage (one JSON file)
   game/TrainerView                             timing, input, scoring, shared drawing
   game/SimpleView, GoNoGoView, ChoiceView, AimView   (SimpleView runs Tap and Sound reaction)
-  game/ToneCue                                 the timed beep (behind AudioCue, so tests can fake it)
+  game/ToneCue                                 the timed sound (behind AudioCue, so tests can fake it)
+  game/CustomCue                               importing your own sound file
   view/TrialBarsView, TrendChartView           charts
 ```
 

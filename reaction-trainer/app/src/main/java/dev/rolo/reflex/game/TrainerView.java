@@ -94,7 +94,7 @@ public abstract class TrainerView extends View {
             case AIM:
                 return new AimView(context, mode, trials);
             case SOUND:
-                return new SimpleView(context, mode, trials, new ToneCue());
+                return new SimpleView(context, mode, trials, new ToneCue(CustomCue.load(context)));
             case SIMPLE:
             default:
                 return new SimpleView(context, mode, trials, null);

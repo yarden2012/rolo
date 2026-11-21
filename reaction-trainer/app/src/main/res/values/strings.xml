@@ -22,8 +22,8 @@
     <string name="mode_simple_how">Wait for the screen to turn green, then tap anywhere as fast as you can. Tapping early is a false start.</string>
 
     <string name="mode_sound">Sound reaction</string>
-    <string name="mode_sound_desc">Tap the instant you hear the beep.</string>
-    <string name="mode_sound_how">Nothing on screen changes, so look away if you like. Tap anywhere the moment you hear the beep.</string>
+    <string name="mode_sound_desc">Tap the instant you hear the sound.</string>
+    <string name="mode_sound_how">Nothing on screen changes, so look away if you like. Tap anywhere the moment you hear the sound.</string>
 
     <string name="mode_gonogo">Go / No-Go</string>
     <string name="mode_gonogo_desc">Tap on green circles. Hold back on red squares.</string>
@@ -66,10 +66,10 @@
     <string name="simple_tap">TAP!</string>
     <string name="too_soon">Too soon!</string>
     <string name="too_soon_body">Wait for green before you tap.</string>
-    <string name="too_soon_sound">Wait for the beep before you tap.</string>
+    <string name="too_soon_sound">Wait for the sound before you tap.</string>
     <string name="sound_listen">Listen…</string>
-    <string name="sound_listen_body">Tap the moment you hear the beep</string>
-    <string name="sound_volume_off">Your media volume is off. Turn it up to hear the beep.</string>
+    <string name="sound_listen_body">Tap the moment you hear the sound</string>
+    <string name="sound_volume_off">Your media volume is off. Turn it up to hear the sound.</string>
     <string name="sound_volume_off_short">Media volume is off</string>
     <string name="sound_bluetooth">Bluetooth audio adds a delay that isn\'t always measured. The phone speaker or wired headphones are more accurate.</string>
     <string name="sound_unavailable">Sound isn\'t available right now. Close any app that\'s using audio, then tap to try again.</string>
@@ -153,6 +153,15 @@
     <string name="length_long">Long</string>
     <string name="length_hint">Tap reaction runs 5, 10 or 20 trials. The other modes scale the same way.</string>
     <string name="settings_haptics">Vibrate on tap</string>
+    <string name="settings_cue">Sound reaction sound</string>
+    <string name="cue_beep">Built-in beep</string>
+    <string name="cue_custom">Your sound</string>
+    <string name="cue_choose">Choose file…</string>
+    <string name="cue_play">Play</string>
+    <string name="cue_reset">Use beep</string>
+    <string name="cue_hint">Any audio file on your phone. Silence at the start is trimmed so timing begins the moment the sound does, and up to 1.5 seconds is kept.</string>
+    <string name="cue_set">Sound reaction now uses %s</string>
+    <string name="cue_failed">Couldn\'t read that file as audio.</string>
     <string name="settings_timing_title">About timing</string>
-    <string name="settings_timing_body">Times run from the first moment the stimulus can be on screen to the moment the touchscreen registers your finger, using the system\'s own touch timestamps. Sound reaction times start when the audio system reports the beep reached the speaker, so speaker delay isn\'t counted against you. Every phone adds a little display and touch delay, so the fairest comparison is you against yourself on the same device.</string>
+    <string name="settings_timing_body">Times run from the first moment the stimulus can be on screen to the moment the touchscreen registers your finger, using the system\'s own touch timestamps. Sound reaction times start when the audio system reports the sound reached the speaker, so speaker delay isn\'t counted against you. Every phone adds a little display and touch delay, so the fairest comparison is you against yourself on the same device.</string>
 </resources>

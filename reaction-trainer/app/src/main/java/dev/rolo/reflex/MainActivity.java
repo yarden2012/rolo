@@ -2,9 +2,16 @@ package dev.rolo.reflex;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,16 +21,24 @@ import android.widget.LinearLayout;
 import android.widget.RadioGroup;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.TimeZone;
 
+import dev.rolo.reflex.game.CustomCue;
+
 /** Home: a quick summary, the four modes with your best in each, and links to stats and settings. */
 public final class MainActivity extends Activity {
+    private static final int REQUEST_CUE = 1;
+
     private final EnumMap<Mode, TextView> metaViews = new EnumMap<>(Mode.class);
     private Prefs prefs;
+    /** The settings dialog's "current sound" line, while the dialog is open. */
+    private TextView cueName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -140,10 +155,98 @@ public final class MainActivity extends Activity {
                 prefs.setHaptics(on);
             }
         });
-        new AlertDialog.Builder(this)
+        cueName = view.findViewById(R.id.cue_name);
+        showCueName();
+        view.findViewById(R.id.cue_choose).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // The system picker needs no storage permission; we only read the one file.
+                Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType("audio/*");
+                try {
+                    startActivityForResult(pick, REQUEST_CUE);
+                } catch (ActivityNotFoundException e) {
+                    Toast.makeText(MainActivity.this, R.string.cue_failed, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        view.findViewById(R.id.cue_play).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CustomCue.preview(MainActivity.this);
+            }
+        });
+        view.findViewById(R.id.cue_reset).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CustomCue.stopPreview();
+                CustomCue.clear(MainActivity.this);
+                showCueName();
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.settings)
                 .setView(view)
                 .setPositiveButton(R.string.done, null)
-                .show();
+                .create();
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface d) {
+                CustomCue.stopPreview();
+                cueName = null;
+            }
+        });
+        dialog.show();
+    }
+
+    private void showCueName() {
+        if (cueName == null) return;
+        String name = CustomCue.name(this);
+        cueName.setText(name != null ? name : getString(R.string.cue_beep));
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_CUE || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        final Uri uri = data.getData();
+        final String name = displayName(uri);
+        final Context app = getApplicationContext();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                boolean ok;
+                try {
+                    CustomCue.importFrom(app, uri, name);
+                    ok = true;
+                } catch (IOException | RuntimeException e) {
+                    Log.w("MainActivity", "Could not import " + uri, e);
+                    ok = false;
+                }
+                final boolean done = ok;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (done) {
+                            showCueName();
+                            Toast.makeText(MainActivity.this, getString(R.string.cue_set, name), Toast.LENGTH_SHORT).show();
+                            CustomCue.preview(MainActivity.this); // let them hear it straight away
+                        } else {
+                            Toast.makeText(MainActivity.this, R.string.cue_failed, Toast.LENGTH_LONG).show();
+                        }
+                    }
+                });
+            }
+        }, "Reflex-import").start();
+    }
+
+    private String displayName(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst() && c.getString(0) != null) return c.getString(0);
+        } catch (RuntimeException ignored) {
+            // fall through to a generic name
+        }
+        return getString(R.string.cue_custom);
     }
 }

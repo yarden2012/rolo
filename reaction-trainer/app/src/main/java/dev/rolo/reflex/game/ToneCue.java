@@ -12,8 +12,8 @@ import android.os.Process;
 import android.util.Log;
 
 /**
- * A beep on a continuously running, low-latency audio stream, timed by when it actually
- * reached the speaker.
+ * A beep (or your own sound, see {@link CustomCue}) on a continuously running, low-latency
+ * audio stream, timed by when it actually reached the speaker.
  *
  * <p>Phones take anywhere from about 10 ms (speaker) to over 200 ms (Bluetooth) to turn
  * written audio into sound, and naive apps count that delay as your reaction time. Instead,
@@ -39,6 +39,12 @@ final class ToneCue implements AudioCue {
     private Thread writer;
     private int sampleRate;
     private short[] beep;
+    /** Your own sound, or null for the built-in beep. */
+    private final CustomCue.Sound custom;
+
+    ToneCue(CustomCue.Sound custom) {
+        this.custom = custom;
+    }
 
     @Override
     public synchronized boolean start() {
@@ -69,7 +75,7 @@ final class ToneCue implements AudioCue {
             t.release();
             return false;
         }
-        beep = synthesize(sampleRate);
+        beep = cueSamples(custom, sampleRate);
         beepFrame = -1;
         beepPending = false;
         try {
@@ -183,6 +189,12 @@ final class ToneCue implements AudioCue {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** The cue to play at {@code sampleRate}: your sound if there is one, else the beep. */
+    static short[] cueSamples(CustomCue.Sound custom, int sampleRate) {
+        if (custom == null || custom.samples.length == 0) return synthesize(sampleRate);
+        return CustomCue.resample(custom.samples, custom.rate, sampleRate);
     }
 
     /** The time a frame was (or will be) presented, from a reference frame with a known time. */
